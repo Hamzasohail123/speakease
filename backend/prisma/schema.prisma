@@ -1,0 +1,141 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+
+model User {
+  id        String   @id @default(cuid())
+  email     String   @unique
+  name      String
+  passwordHash String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  profile  UserProfile?
+  sessions Session[]
+  memories Memory[]
+
+  @@map("users")
+}
+
+model UserProfile {
+  id        String   @id @default(cuid())
+  userId    String   @unique
+  bio       String?
+  goals     String[] @default([])
+  documents String[] @default([]) // URLs or paths to uploaded documents
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("user_profiles")
+}
+
+model Topic {
+  id          String    @id @default(cuid())
+  name        String
+  description String?
+  category    String?
+  isDaily     Boolean   @default(false)
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  sessions Session[]
+
+  @@map("topics")
+}
+
+model Session {
+  id        String        @id @default(cuid())
+  userId    String
+  topicId   String?
+  duration  Int           // in minutes
+  startedAt DateTime      @default(now())
+  endedAt   DateTime?
+  transcript String?      @db.Text
+  summary   String?       @db.Text
+  status    SessionStatus @default(PENDING)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user     User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  topic    Topic?    @relation(fields: [topicId], references: [id], onDelete: SetNull)
+  messages Message[]
+  feedback Feedback?
+  memories Memory[]
+
+  @@index([userId])
+  @@index([status])
+  @@index([startedAt])
+  @@map("sessions")
+}
+
+enum SessionStatus {
+  PENDING
+  ACTIVE
+  ENDED
+  CANCELLED
+}
+
+model Message {
+  id        String      @id @default(cuid())
+  sessionId String
+  role      MessageRole
+  content   String      @db.Text
+  timestamp DateTime    @default(now())
+  createdAt DateTime    @default(now())
+
+  session Session @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+
+  @@index([sessionId])
+  @@index([timestamp])
+  @@map("messages")
+}
+
+enum MessageRole {
+  USER
+  ASSISTANT
+}
+
+model Memory {
+  id        String   @id @default(cuid())
+  userId    String
+  sessionId String?
+  content   String   @db.Text
+  embedding Unsupported("vector(1536)")? // pgvector - 1536 dimensions for OpenAI embeddings
+  summary   String   @db.Text
+  metadata  Json?    // Store additional context as JSON
+  createdAt DateTime @default(now())
+
+  user    User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  session Session? @relation(fields: [sessionId], references: [id], onDelete: SetNull)
+
+  @@index([userId])
+  @@index([sessionId])
+  @@map("memories")
+}
+
+model Feedback {
+  id         String   @id @default(cuid())
+  sessionId  String   @unique
+  mistakes   Json     // Array of Mistake objects
+  improvements String[] @default([])
+  tips       String[] @default([])
+  reportJson Json     // Full report as JSON
+  createdAt  DateTime @default(now())
+
+  session Session @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+
+  @@map("feedback")
+}
+
