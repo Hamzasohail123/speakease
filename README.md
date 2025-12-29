@@ -123,16 +123,17 @@ See [docs/ARCHITECTURE.md](./docs/ARCHITECTURE.md) for detailed information.
 
 Ready to deploy? Check out our deployment guides:
 
-- **[QUICK_DEPLOY.md](./QUICK_DEPLOY.md)** - Fast 15-minute deployment guide
+- **[RENDER_DEPLOY.md](./RENDER_DEPLOY.md)** - 🆓 FREE deployment with Render (Recommended)
+- **[QUICK_DEPLOY.md](./QUICK_DEPLOY.md)** - Railway deployment guide
 - **[DEPLOYMENT.md](./DEPLOYMENT.md)** - Comprehensive deployment documentation
 
-### Quick Start
+### Quick Start (100% Free!)
 
-1. **Backend**: Deploy to [Railway](https://railway.app) or [Render](https://render.com)
-2. **Frontend**: Deploy to [Vercel](https://vercel.com)
-3. **Database**: Already using Neon PostgreSQL
+1. **Backend**: Deploy to [Render](https://render.com) - FREE tier with PostgreSQL
+2. **Frontend**: Deploy to [Vercel](https://vercel.com) - FREE tier
+3. **Total Cost**: $0/month 🎉
 
-Both platforms offer free tiers perfect for getting started!
+See [RENDER_DEPLOY.md](./RENDER_DEPLOY.md) for step-by-step instructions!
 
 ## License
 
