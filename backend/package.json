@@ -14,7 +14,8 @@
     "db:studio": "prisma studio",
     "db:seed": "tsx prisma/seed.ts",
     "db:verify": "tsx scripts/verify-db.ts",
-    "db:reset": "prisma migrate reset"
+    "db:reset": "prisma migrate reset",
+    "test:email": "tsx scripts/test-email.ts"
   },
   "dependencies": {
     "@ai-english-speaker/shared": "*",

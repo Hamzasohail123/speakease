@@ -13,6 +13,7 @@ import sessionRoutes from './modules/sessions/routes';
 import topicRoutes from './modules/topics/routes';
 import conversationRoutes from './modules/conversation/routes';
 import feedbackRoutes from './modules/feedback/routes';
+import adminRoutes from './modules/admin/routes';
 
 // Load environment variables
 dotenv.config();
@@ -48,6 +49,7 @@ app.use('/api/v1/sessions', sessionRoutes);
 app.use('/api/v1/topics', topicRoutes);
 app.use('/api/v1/conversation', conversationRoutes);
 app.use('/api/v1/feedback', feedbackRoutes);
+app.use('/api/v1/admin', adminRoutes);
 // app.use('/api/v1/memory', memoryRoutes);
 
 // Error handling middleware (must be last)

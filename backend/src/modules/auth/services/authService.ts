@@ -9,6 +9,8 @@ import {
 } from '../repositories/userRepository';
 import { RegisterInput, LoginInput } from '../validators/authValidators';
 import { AppError } from '../../../middleware/errorHandler';
+import { notifyNewUserSignup } from './notificationService';
+import { logger } from '../../../utils/logger';
 
 export interface AuthResponse {
   user: User;
@@ -35,6 +37,13 @@ export async function registerUser(input: RegisterInput): Promise<AuthResponse> 
     name: input.name,
     passwordHash,
   });
+
+  // Send notification to admin (don't block signup if this fails)
+  try {
+    await notifyNewUserSignup(user);
+  } catch (error) {
+    logger.error('Failed to send new user notification:', error);
+  }
 
   // Generate tokens
   const token = generateAccessToken({ id: user.id, email: user.email });
