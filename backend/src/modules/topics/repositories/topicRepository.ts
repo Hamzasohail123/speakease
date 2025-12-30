@@ -9,7 +9,7 @@ export async function getAllTopics(): Promise<Topic[]> {
     orderBy: { name: 'asc' },
   });
 
-  return topics.map((topic) => ({
+  return topics.map((topic: any) => ({
     id: topic.id,
     name: topic.name,
     description: topic.description || undefined,
@@ -52,7 +52,7 @@ export async function getTopicsByCategory(category: string): Promise<Topic[]> {
     orderBy: { name: 'asc' },
   });
 
-  return topics.map((topic) => ({
+  return topics.map((topic: any) => ({
     id: topic.id,
     name: topic.name,
     description: topic.description || undefined,
@@ -138,7 +138,7 @@ export async function getTopicsByCategories(
     orderBy: { name: 'asc' },
   });
 
-  return topics.map((topic) => ({
+  return topics.map((topic: any) => ({
     id: topic.id,
     name: topic.name,
     description: topic.description || undefined,

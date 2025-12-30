@@ -128,7 +128,7 @@ export async function getUserSessions(
     },
   });
 
-  return sessions.map((session) => ({
+  return sessions.map((session: any) => ({
     id: session.id,
     userId: session.userId,
     topicId: session.topicId || undefined,
@@ -188,7 +188,7 @@ export async function getSessionMessages(sessionId: string): Promise<Message[]> 
     orderBy: { timestamp: 'asc' },
   });
 
-  return messages.map((msg) => ({
+  return messages.map((msg: any) => ({
     id: msg.id,
     sessionId: msg.sessionId,
     role: msg.role as MessageRole,
