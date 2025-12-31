@@ -32,17 +32,23 @@ export function LoginForm() {
 
   const onSubmit = async (data: LoginFormData) => {
     try {
-      await login(data);
-      toast({
-        title: 'Success',
-        description: 'Logged in successfully',
+      await login(data,{
+        onSuccess: () =>{
+          toast({
+            title: 'Success',
+            description: 'Logged in successfully',  
+          });
+        },
+        onError: (error) =>{
+          toast({
+            title: 'Error',
+            description: error instanceof Error ? error.message : 'Login failed',
+            variant: 'destructive',
+          });
+        }
       });
     } catch (error) {
-      toast({
-        title: 'Error',
-        description: error instanceof Error ? error.message : 'Login failed',
-        variant: 'destructive',
-      });
+      console.error(error);
     }
   };
 
