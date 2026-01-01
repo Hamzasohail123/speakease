@@ -5,11 +5,12 @@ import { useParams, useRouter } from 'next/navigation';
 import { DashboardLayout } from '@/components/layout/dashboard-layout';
 import { ConversationChat } from '@/components/conversation/conversation-chat';
 import { VoiceChat } from '@/components/conversation/voice-chat';
+import { CallWithAI } from '@/components/conversation/call-with-ai';
 import { SessionTimer } from '@/components/sessions/session-timer';
 import { useQuery, useMutation } from '@tanstack/react-query';
 import { sessionsApi } from '@/lib/api';
 import { useToast } from '@/hooks/use-toast';
-import { Loader2, Mic, MessageSquare, Sparkles } from 'lucide-react';
+import { Loader2, Mic, MessageSquare, Phone, Sparkles } from 'lucide-react';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 
 export default function ActiveSessionPage() {
@@ -17,7 +18,7 @@ export default function ActiveSessionPage() {
   const router = useRouter();
   const { toast } = useToast();
   const sessionId = params.sessionId as string;
-  const [mode, setMode] = useState<'text' | 'voice'>('voice');
+  const [mode, setMode] = useState<'text' | 'voice' | 'call'>('voice');
 
   const { data: session, isLoading } = useQuery({
     queryKey: ['sessions', sessionId],
@@ -93,8 +94,8 @@ export default function ActiveSessionPage() {
         </div>
 
         {/* Mode Tabs */}
-        <Tabs value={mode} onValueChange={(v) => setMode(v as 'text' | 'voice')} className="w-full">
-          <TabsList className="grid w-full grid-cols-2 h-14 bg-muted/50 border-2">
+        <Tabs value={mode} onValueChange={(v) => setMode(v as 'text' | 'voice' | 'call')} className="w-full">
+          <TabsList className="grid w-full grid-cols-3 h-14 bg-muted/50 border-2">
             <TabsTrigger 
               value="text" 
               className="flex items-center gap-2 text-base data-[state=active]:bg-gradient-to-r data-[state=active]:from-blue-500 data-[state=active]:to-cyan-500 data-[state=active]:text-white"
@@ -109,12 +110,22 @@ export default function ActiveSessionPage() {
               <Mic className="h-5 w-5" />
               Voice Call
             </TabsTrigger>
+            <TabsTrigger 
+              value="call" 
+              className="flex items-center gap-2 text-base data-[state=active]:bg-gradient-to-r data-[state=active]:from-green-500 data-[state=active]:to-emerald-500 data-[state=active]:text-white"
+            >
+              <Phone className="h-5 w-5" />
+              Call with AI
+            </TabsTrigger>
           </TabsList>
           <TabsContent value="text" className="mt-6">
             <ConversationChat sessionId={sessionId} />
           </TabsContent>
           <TabsContent value="voice" className="mt-6">
             <VoiceChat sessionId={sessionId} />
+          </TabsContent>
+          <TabsContent value="call" className="mt-6">
+            <CallWithAI sessionId={sessionId} />
           </TabsContent>
         </Tabs>
       </div>

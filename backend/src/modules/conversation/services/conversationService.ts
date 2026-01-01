@@ -76,14 +76,18 @@ export async function sendMessage(
   }
 
   // Save user message
+  logger.info(`Saving user message to database: "${userMessage}"`);
   const userMessageRecord = await addMessage(sessionId, MessageRole.USER, userMessage);
+  logger.info(`User message saved: id=${userMessageRecord.id}, content="${userMessageRecord.content}"`);
 
   // Save assistant message
+  logger.info(`Saving assistant message to database: "${assistantResponse.substring(0, 50)}..."`);
   const assistantMessageRecord = await addMessage(
     sessionId,
     MessageRole.ASSISTANT,
     assistantResponse
   );
+  logger.info(`Assistant message saved: id=${assistantMessageRecord.id}`);
 
   return {
     message: userMessageRecord,

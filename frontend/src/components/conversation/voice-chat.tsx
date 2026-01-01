@@ -57,8 +57,25 @@ export function VoiceChat({ sessionId }: VoiceChatProps) {
   const sendVoiceMutation = useMutation({
     mutationFn: (audioBlob: Blob) => conversationApi.sendVoiceMessage(sessionId, audioBlob),
     onSuccess: (data) => {
+      console.log('Voice message response received:', {
+        userMessage: data.userMessage,
+        assistantMessage: data.assistantMessage,
+        hasAudio: !!data.audio,
+      });
+      
       // Reset processing state immediately
       setIsProcessing(false);
+      
+      // Check if user message has content
+      if (!data.userMessage?.content || data.userMessage.content.trim().length === 0) {
+        console.warn('User message has no content!', data.userMessage);
+        toast({
+          title: 'No Speech Detected',
+          description: 'The AI could not understand your audio. Please speak clearly and try again.',
+          variant: 'destructive',
+        });
+        return;
+      }
       
       // Create audio URL for AI response
       const audioUrl = data.audio
@@ -81,6 +98,11 @@ export function VoiceChat({ sessionId }: VoiceChatProps) {
         audioUrl: audioUrl,
       };
 
+      console.log('Adding messages:', {
+        user: userVoiceMsg.content.substring(0, 50),
+        ai: aiVoiceMsg.content.substring(0, 50),
+      });
+
       setMessages((prev) => [...prev, userVoiceMsg, aiVoiceMsg]);
       
       // Automatically play AI audio response
@@ -89,6 +111,8 @@ export function VoiceChat({ sessionId }: VoiceChatProps) {
         setTimeout(() => {
           playAudioResponse(audioUrl, data.assistantMessage.id);
         }, 100);
+      } else {
+        console.warn('No audio URL in response');
       }
     },
     onError: (error) => {
@@ -135,36 +159,104 @@ export function VoiceChat({ sessionId }: VoiceChatProps) {
 
   const startRecording = async () => {
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      console.log('Requesting microphone access...');
+      const stream = await navigator.mediaDevices.getUserMedia({ 
+        audio: {
+          echoCancellation: true,
+          noiseSuppression: true,
+          autoGainControl: true,
+        }
+      });
+      
+      console.log('Microphone access granted');
+      console.log('Audio tracks:', stream.getAudioTracks().map(t => ({
+        label: t.label,
+        enabled: t.enabled,
+        muted: t.muted,
+        readyState: t.readyState,
+      })));
+
+      // Check available MIME types
+      const supportedTypes = [
+        'audio/webm;codecs=opus',
+        'audio/webm',
+        'audio/ogg;codecs=opus',
+        'audio/mp4',
+      ];
+      
+      let selectedMimeType = 'audio/webm;codecs=opus';
+      for (const mimeType of supportedTypes) {
+        if (MediaRecorder.isTypeSupported(mimeType)) {
+          selectedMimeType = mimeType;
+          console.log('Using MIME type:', mimeType);
+          break;
+        }
+      }
+
       const mediaRecorder = new MediaRecorder(stream, {
-        mimeType: 'audio/webm;codecs=opus',
+        mimeType: selectedMimeType,
+      });
+      
+      console.log('MediaRecorder created:', {
+        mimeType: selectedMimeType,
+        state: mediaRecorder.state,
       });
 
       audioChunksRef.current = [];
 
       mediaRecorder.ondataavailable = (event) => {
+        console.log('Data available:', event.data.size, 'bytes');
         if (event.data.size > 0) {
           audioChunksRef.current.push(event.data);
+        } else {
+          console.warn('Received empty data chunk');
         }
+      };
+
+      mediaRecorder.onerror = (event) => {
+        console.error('MediaRecorder error:', event);
+        toast({
+          title: 'Recording Error',
+          description: 'An error occurred while recording. Please try again.',
+          variant: 'destructive',
+        });
+        setIsRecording(false);
       };
 
       mediaRecorder.onstop = async () => {
         const audioBlob = new Blob(audioChunksRef.current, { type: 'audio/webm' });
-        stream.getTracks().forEach((track) => track.stop());
+        stream.getTracks().forEach((track) => {
+          track.stop();
+          console.log('Stopped track:', track.kind, track.label);
+        });
         
-        console.log('Recording stopped, audio size:', audioBlob.size, 'bytes');
+        console.log('Recording stopped:');
+        console.log('- Audio chunks:', audioChunksRef.current.length);
+        console.log('- Total size:', audioBlob.size, 'bytes');
+        console.log('- MIME type:', audioBlob.type);
+        console.log('- Duration estimate:', Math.round(audioBlob.size / 16000), 'seconds (rough estimate)');
         
-        if (audioBlob.size > 0) {
-          setIsProcessing(true);
-          console.log('Sending voice message to backend...');
-          sendVoiceMutation.mutate(audioBlob);
-        } else {
+        if (audioBlob.size === 0) {
           toast({
-            title: 'Error',
-            description: 'No audio recorded. Please try again.',
+            title: 'No Audio Recorded',
+            description: 'The recording is empty. Please check your microphone and try again.',
             variant: 'destructive',
           });
+          return;
         }
+
+        if (audioBlob.size < 1000) {
+          toast({
+            title: 'Recording Too Short',
+            description: 'The recording is too short. Please speak for at least 1-2 seconds.',
+            variant: 'destructive',
+          });
+          return;
+        }
+        
+        setIsProcessing(true);
+        console.log('Sending voice message to backend...');
+        sendVoiceMutation.mutate(audioBlob);
       };
 
       mediaRecorderRef.current = mediaRecorder;
@@ -241,7 +333,13 @@ export function VoiceChat({ sessionId }: VoiceChatProps) {
                   // User message - show briefly as "You said: ..."
                   <div className="max-w-[80%] rounded-lg p-3 bg-primary text-primary-foreground">
                     <p className="text-xs opacity-80 mb-1">You said:</p>
-                    <p className="text-sm">{msg.content}</p>
+                    <p className="text-sm">
+                      {msg.content && msg.content.trim().length > 0 ? (
+                        msg.content
+                      ) : (
+                        <span className="italic opacity-70">[No transcription available]</span>
+                      )}
+                    </p>
                   </div>
                 ) : (
                   // AI message - show as voice bubble with play button

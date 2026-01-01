@@ -54,9 +54,17 @@ export const conversationApi = {
 
       const data = await response.json();
       console.log('Voice message response:', data);
+      console.log('User message content:', data.data?.userMessage?.content);
+      console.log('Assistant message content:', data.data?.assistantMessage?.content);
       
       if (!data.data) {
         throw new Error('Invalid response format from server');
+      }
+      
+      // Check if user message has content
+      if (!data.data.userMessage?.content || data.data.userMessage.content.trim().length === 0) {
+        console.error('User message is empty!', data.data);
+        throw new Error('No speech was detected in your audio. Please speak clearly and try again.');
       }
       
       return data.data;

@@ -5,11 +5,15 @@ import {
   getConversationMessages,
 } from './controllers/conversationController';
 import { processVoice, voiceUpload } from './controllers/voiceController';
+import realtimeRoutes from './realtime/realtimeRoutes';
 
 const router = Router();
 
 // All routes require authentication
 router.use(authenticate);
+
+// Realtime API routes
+router.use('/realtime', realtimeRoutes);
 
 /**
  * @route   POST /api/v1/conversation/message

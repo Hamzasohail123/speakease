@@ -15,6 +15,7 @@ import topicRoutes from './modules/topics/routes';
 import conversationRoutes from './modules/conversation/routes';
 import feedbackRoutes from './modules/feedback/routes';
 import adminRoutes from './modules/admin/routes';
+import { setupRealtimeWebSocket } from './modules/conversation/realtime/websocketProxy';
 
 // Load environment variables
 dotenv.config();
@@ -57,10 +58,17 @@ app.use('/api/v1/admin', adminRoutes);
 app.use(notFoundHandler);
 app.use(errorHandler);
 
+// Create HTTP server for WebSocket support
+const server = createServer(app);
+
+// Setup Realtime WebSocket
+setupRealtimeWebSocket(server);
+
 // Start server
-app.listen(PORT, () => {
+server.listen(PORT, () => {
   logger.info(`🚀 Server running on port ${PORT}`);
   logger.info(`📝 Environment: ${process.env.NODE_ENV || 'development'}`);
+  logger.info(`🔌 Realtime WebSocket ready on /api/v1/conversation/realtime/ws`);
 });
 
 export default app;

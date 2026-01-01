@@ -1,0 +1,6 @@
+# This file ensures the audio directory is tracked by git
+# Place your audio files here:
+# - ring-tone.mp3
+# - call-connect.mp3
+# - call-end.mp3
+
