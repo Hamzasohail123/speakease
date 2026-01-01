@@ -93,9 +93,11 @@ export function VoiceChat({ sessionId }: VoiceChatProps) {
     },
     onError: (error) => {
       setIsProcessing(false);
+      console.error('Voice message error:', error);
+      const errorMessage = error instanceof Error ? error.message : 'Failed to send voice message';
       toast({
         title: 'Error',
-        description: error instanceof Error ? error.message : 'Failed to send voice message',
+        description: errorMessage,
         variant: 'destructive',
       });
     },
@@ -150,9 +152,18 @@ export function VoiceChat({ sessionId }: VoiceChatProps) {
         const audioBlob = new Blob(audioChunksRef.current, { type: 'audio/webm' });
         stream.getTracks().forEach((track) => track.stop());
         
+        console.log('Recording stopped, audio size:', audioBlob.size, 'bytes');
+        
         if (audioBlob.size > 0) {
           setIsProcessing(true);
+          console.log('Sending voice message to backend...');
           sendVoiceMutation.mutate(audioBlob);
+        } else {
+          toast({
+            title: 'Error',
+            description: 'No audio recorded. Please try again.',
+            variant: 'destructive',
+          });
         }
       };
 

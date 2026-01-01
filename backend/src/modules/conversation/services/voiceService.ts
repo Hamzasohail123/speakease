@@ -25,16 +25,19 @@ export async function processVoiceMessage(
   audioFormat: string = 'webm'
 ): Promise<VoiceMessageResult> {
   try {
+    logger.info(`Processing voice message: userId=${userId}, sessionId=${sessionId}, audioSize=${audioBuffer.length} bytes, format=${audioFormat}`);
+    
     // Step 1: Convert audio to text (STT)
     logger.info('Converting speech to text...');
     const sttResult = await speechToText(audioBuffer, `audio.${audioFormat}`);
     const userText = sttResult.text.trim();
 
-    if (!userText) {
-      throw new Error('No speech detected in audio');
-    }
+    logger.info(`STT result: "${userText}" (length: ${userText.length})`);
 
-    logger.info(`STT result: "${userText}"`);
+    if (!userText || userText.length === 0) {
+      logger.warn('No speech detected in audio - returning empty response');
+      throw new Error('No speech detected in audio. Please speak clearly and try again.');
+    }
 
     // Step 2: Send text message to LLM (reuse existing conversation service)
     logger.info('Sending message to LLM...');
@@ -44,6 +47,8 @@ export async function processVoiceMessage(
       userText
     );
 
+    logger.info(`LLM response received: "${assistantMessage.content.substring(0, 100)}..."`);
+
     // Step 3: Convert LLM response to speech (TTS)
     logger.info('Converting text to speech...');
     const audioResponse = await textToSpeech(assistantMessage.content, {
@@ -52,6 +57,8 @@ export async function processVoiceMessage(
       format: 'mp3',
     });
 
+    logger.info(`Voice message processing complete. Audio response size: ${audioResponse.length} bytes`);
+
     return {
       userMessage,
       assistantMessage,
@@ -59,6 +66,12 @@ export async function processVoiceMessage(
     };
   } catch (error) {
     logger.error('Voice message processing error:', error);
+    if (error instanceof Error) {
+      logger.error('Error details:', {
+        message: error.message,
+        stack: error.stack,
+      });
+    }
     throw error;
   }
 }

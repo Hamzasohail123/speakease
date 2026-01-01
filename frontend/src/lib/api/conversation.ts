@@ -17,6 +17,8 @@ export const conversationApi = {
   },
 
   sendVoiceMessage: async (sessionId: string, audioBlob: Blob) => {
+    console.log('Preparing voice message:', { sessionId, audioSize: audioBlob.size });
+    
     const formData = new FormData();
     formData.append('audio', audioBlob, 'audio.webm');
     formData.append('sessionId', sessionId);
@@ -24,22 +26,44 @@ export const conversationApi = {
     const token = localStorage.getItem('auth_token');
     const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001';
 
-    const response = await fetch(`${API_URL}/api/v1/conversation/voice`, {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${token}`,
-      },
-      body: formData,
-      credentials: 'include',
-    });
+    console.log('Sending to:', `${API_URL}/api/v1/conversation/voice`);
 
-    if (!response.ok) {
-      const error = await response.json().catch(() => ({ error: 'Request failed' }));
-      throw new Error(error.error || 'Failed to send voice message');
+    try {
+      const response = await fetch(`${API_URL}/api/v1/conversation/voice`, {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+        body: formData,
+        credentials: 'include',
+      });
+
+      console.log('Response status:', response.status, response.statusText);
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error('Error response:', errorText);
+        let error;
+        try {
+          error = JSON.parse(errorText);
+        } catch {
+          error = { error: errorText || 'Request failed' };
+        }
+        throw new Error(error.error || error.message || 'Failed to send voice message');
+      }
+
+      const data = await response.json();
+      console.log('Voice message response:', data);
+      
+      if (!data.data) {
+        throw new Error('Invalid response format from server');
+      }
+      
+      return data.data;
+    } catch (error) {
+      console.error('Voice message API error:', error);
+      throw error;
     }
-
-    const data = await response.json();
-    return data.data;
   },
 
   getMessages: async (sessionId: string): Promise<Message[]> => {
