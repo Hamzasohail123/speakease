@@ -1,48 +1,32 @@
-# 🔧 Render Deployment Fix
+# 🔧 Render Deployment Configuration
 
-## Issue
-The build is failing because the `shared` package needs to be built before the backend.
+## Recommended Settings
 
-## Solution
+**Root Directory:** `backend`
 
-### Option 1: Change Root Directory (Recommended)
-
-1. **Remove Root Directory** (set it to empty/blank)
-2. **Update Build Command** to:
-   ```bash
-   cd backend && npm install && npm run build --workspace=../shared && npm run build && npm run db:generate
-   ```
-3. **Update Start Command** to:
-   ```bash
-   cd backend && npm run db:migrate:deploy && npm start
-   ```
-
-### Option 2: Keep Root Directory as `backend`
-
-**Update Build Command** to:
+**Build Command:**
 ```bash
-cd .. && npm install && npm run build --workspace=shared && cd backend && npm install && npm run build && npm run db:generate
+cd backend && npm install --include=dev && cd ../shared && npm install && npm run build && cd ../backend && npm run build && npm run db:generate
 ```
 
-**Update Start Command** to:
+**Start Command:**
 ```bash
-npm run db:migrate:deploy && npm start
+cd backend && npm run db:migrate:deploy && npm start
 ```
 
----
+## What This Does
 
-## Recommended: Option 1
+1. **Build Command:**
+   - Installs backend dependencies (including dev dependencies for TypeScript)
+   - Builds the shared package first (required dependency)
+   - Builds the backend application
+   - Generates Prisma client
 
-**Settings:**
-- Root Directory: (leave empty/blank)
-- Build Command:
-  ```bash
-  cd backend && npm install && npm run build --workspace=../shared && npm run build && npm run db:generate
-  ```
-- Start Command:
-  ```bash
-  cd backend && npm run db:migrate:deploy && npm start
-  ```
+2. **Start Command:**
+   - Runs database migrations
+   - Starts the server
 
-This ensures the shared package is built first, then the backend.
+## Why `--include=dev`?
+
+TypeScript and `@types/node` are in devDependencies, but they're needed during the build process. The `--include=dev` flag ensures they're installed even in production builds.
 

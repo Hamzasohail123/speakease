@@ -111,7 +111,7 @@ This guide will help you deploy your SpeakEase application to production.
      - **Name**: `speakease-backend`
      - **Environment**: `Node`
      - **Root Directory**: `backend`
-     - **Build Command**: `cd ../.. && npm install && npm run build --workspace=shared && npm run build --workspace=backend`
+     - **Build Command**: `cd backend && npm install --include=dev && cd ../shared && npm install && npm run build && cd ../backend && npm run build && npm run db:generate`
      - **Start Command**: `cd backend && npm run db:migrate:deploy && npm start`
 
 3. **Set Environment Variables**

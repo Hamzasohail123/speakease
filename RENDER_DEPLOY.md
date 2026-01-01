@@ -50,11 +50,11 @@ Deploy your **SpeakEase** platform to production for FREE using Render and Verce
    - **Runtime**: `Node`
    - **Build Command**: 
      ```bash
-     npm install && npm run build && npm run db:generate
+     cd backend && npm install --include=dev && cd ../shared && npm install && npm run build && cd ../backend && npm run build && npm run db:generate
      ```
    - **Start Command**: 
      ```bash
-     npm run db:migrate:deploy && npm start
+     cd backend && npm run db:migrate:deploy && npm start
      ```
    - **Plan**: **Free**
 
