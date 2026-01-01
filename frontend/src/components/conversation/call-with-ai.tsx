@@ -27,6 +27,7 @@ export function CallWithAI({ sessionId }: CallWithAIProps) {
   const ringToneRef = useRef<HTMLAudioElement | null>(null);
   const callTimerRef = useRef<NodeJS.Timeout | null>(null);
   const durationTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const nextAudioTimeRef = useRef<number>(0); // Track when next audio chunk should play
   const { toast } = useToast();
 
   // Initialize audio context
@@ -156,6 +157,15 @@ export function CallWithAI({ sessionId }: CallWithAIProps) {
           if (typeof event.data === 'string') {
             // JSON message
             const data = JSON.parse(event.data);
+            
+            // Log important message types for debugging
+            if (data.type === 'response.audio.delta') {
+              const deltaSize = data.delta ? data.delta.length : 0;
+              console.log(`[FRONTEND] 🔊 Received audio delta: ${deltaSize} bytes (base64)`);
+            } else if (['response.created', 'response.done', 'response.audio.done'].includes(data.type)) {
+              console.log(`[FRONTEND] 📨 Received message: ${data.type}`);
+            }
+            
             handleRealtimeMessage(data);
           } else if (event.data instanceof ArrayBuffer || event.data instanceof Blob) {
             // Binary audio data from OpenAI
@@ -227,17 +237,47 @@ export function CallWithAI({ sessionId }: CallWithAIProps) {
         // Handle different message types from OpenAI Realtime API
         switch (data.type) {
           case 'response.audio.delta':
-            // AI is speaking - audio chunk received
+            // AI is speaking - audio chunk received as base64 in data.delta
             setIsAISpeaking(true);
             setIsUserSpeaking(false);
             // Play audio chunk if present
             if (data.delta && audioContextRef.current) {
-              await playAudioChunk(data.delta);
+              // CRITICAL: Pass base64 string directly - playAudioChunk will handle conversion
+              // This avoids ArrayBuffer detachment issues
+              playAudioChunk(data.delta).catch((error) => {
+                console.error('[FRONTEND] ❌ Error playing audio:', error);
+              });
             }
             break;
 
+          case 'response.audio_transcript.delta':
+            // AI is generating transcript (text) - can log if needed
+            break;
+
+          case 'response.audio_transcript.done':
+            // AI finished generating transcript
+            if (data.response?.audio_transcript) {
+              console.log('AI transcript:', data.response.audio_transcript);
+            }
+            break;
+
+          case 'response.created':
+            // AI started responding
+            setIsAISpeaking(true);
+            setIsUserSpeaking(false);
+            break;
+
+          case 'response.done':
+            // AI finished responding
+            setIsAISpeaking(false);
+            break;
+
           case 'response.audio.done':
-            // AI finished speaking
+            // AI finished speaking - reset audio queue
+            console.log('[FRONTEND] 🎵 AI finished speaking, resetting audio queue');
+            if (audioContextRef.current) {
+              nextAudioTimeRef.current = audioContextRef.current.currentTime;
+            }
             setIsAISpeaking(false);
             break;
 
@@ -285,9 +325,14 @@ export function CallWithAI({ sessionId }: CallWithAIProps) {
       };
 
   // Convert PCM16 to WAV format for Web Audio API
+  // CRITICAL: Always create a copy of the input buffer to avoid detachment
   const pcm16ToWav = (pcm16Data: ArrayBuffer, sampleRate: number = 24000): ArrayBuffer => {
-    const pcm16 = new Int16Array(pcm16Data);
+    // Create a copy of the input buffer to prevent detachment
+    const inputCopy = pcm16Data.slice(0);
+    const pcm16 = new Int16Array(inputCopy);
     const length = pcm16.length;
+    
+    // Create new buffer for WAV (don't reuse input)
     const buffer = new ArrayBuffer(44 + length * 2);
     const view = new DataView(buffer);
     
@@ -312,7 +357,7 @@ export function CallWithAI({ sessionId }: CallWithAIProps) {
     writeString(36, 'data');
     view.setUint32(40, length * 2, true);
     
-    // Copy PCM data
+    // Copy PCM data to WAV buffer
     const wavData = new Int16Array(buffer, 44);
     wavData.set(pcm16);
     
@@ -320,44 +365,55 @@ export function CallWithAI({ sessionId }: CallWithAIProps) {
   };
 
   // Play audio chunk from base64 or ArrayBuffer
+  // CRITICAL: This function creates proper copies to avoid ArrayBuffer detachment
   const playAudioChunk = async (audioData: string | ArrayBuffer) => {
     if (!audioContextRef.current) {
-      console.warn('AudioContext not available');
+      console.warn('[FRONTEND] AudioContext not available');
       return;
     }
 
     try {
-      let audioBuffer: AudioBuffer;
+      let pcm16Buffer: ArrayBuffer;
 
       if (typeof audioData === 'string') {
-        // Base64 encoded audio
+        // Base64 encoded PCM16 audio from response.audio.delta
+        // Decode base64 to binary string
         const binaryString = atob(audioData);
-        const bytes = new Uint8Array(binaryString.length);
+        
+        // Create a NEW ArrayBuffer and copy data (prevents detachment)
+        const buffer = new ArrayBuffer(binaryString.length);
+        const bytes = new Uint8Array(buffer);
         for (let i = 0; i < binaryString.length; i++) {
           bytes[i] = binaryString.charCodeAt(i);
         }
-        audioBuffer = await audioContextRef.current.decodeAudioData(bytes.buffer);
+        pcm16Buffer = buffer; // This is a fresh buffer, not detached
       } else {
-        // OpenAI sends PCM16 audio - convert to WAV first
-        try {
-          // Try direct decode first (in case it's already WAV/MP3)
-          audioBuffer = await audioContextRef.current.decodeAudioData(audioData);
-        } catch (decodeError) {
-          // If decode fails, assume it's PCM16 and convert to WAV
-          console.debug('Decode failed, converting PCM16 to WAV:', decodeError);
-          const wavBuffer = pcm16ToWav(audioData, 24000); // OpenAI uses 24kHz
-          audioBuffer = await audioContextRef.current.decodeAudioData(wavBuffer);
-        }
+        // ArrayBuffer input - create a copy to prevent detachment
+        pcm16Buffer = audioData.slice(0);
       }
 
+      // Convert PCM16 to WAV (pcm16ToWav will create another copy internally)
+      const wavBuffer = pcm16ToWav(pcm16Buffer, 24000);
+      
+      // Decode WAV to AudioBuffer
+      const audioBuffer = await audioContextRef.current.decodeAudioData(wavBuffer.slice(0));
+
+      // Create and schedule audio source
       const source = audioContextRef.current.createBufferSource();
       source.buffer = audioBuffer;
       source.connect(audioContextRef.current.destination);
-      source.start();
+      
+      // Schedule audio to play sequentially (queue chunks)
+      const currentTime = audioContextRef.current.currentTime;
+      const startTime = Math.max(currentTime, nextAudioTimeRef.current);
+      source.start(startTime);
+      
+      // Update next play time for sequential playback
+      nextAudioTimeRef.current = startTime + audioBuffer.duration;
       
       setIsAISpeaking(true);
     } catch (error) {
-      console.error('Error playing audio chunk:', error);
+      console.error('[FRONTEND] ❌ Error playing audio chunk:', error);
       setIsAISpeaking(false);
     }
   };
