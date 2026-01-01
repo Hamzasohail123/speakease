@@ -252,9 +252,9 @@ export function setupRealtimeWebSocket(server: any) {
                 },
                 turn_detection: {
                   type: 'server_vad',
-                  threshold: 0.5,
+                  threshold: 0.3, // Lower threshold = more sensitive (was 0.5, now 0.3)
                   prefix_padding_ms: 300,
-                  silence_duration_ms: 500,
+                  silence_duration_ms: 500, // Wait 500ms after user stops speaking before AI responds
                 },
                 temperature: 0.7,
                 max_response_output_tokens: 4096,
@@ -354,13 +354,15 @@ export function setupRealtimeWebSocket(server: any) {
                   console.log('[REALTIME] 🤖 AI said:', message.response.audio_transcript);
                   saveTranscript(sessionId, 'assistant', message.response.audio_transcript);
                 } else if (message.type === 'response.created') {
-                  console.log('[REALTIME] 🤖 AI started responding');
+                  console.log('[REALTIME] 🤖 AI started responding (after 500ms silence)');
                 } else if (message.type === 'response.done') {
                   console.log('[REALTIME] 🤖 AI finished responding');
                 } else if (message.type === 'input_audio_buffer.speech_started') {
                   console.log('[REALTIME] 👤 User started speaking');
                 } else if (message.type === 'input_audio_buffer.speech_stopped') {
-                  console.log('[REALTIME] 👤 User stopped speaking');
+                  console.log('[REALTIME] 👤 User stopped speaking - waiting 500ms before AI responds...');
+                } else if (message.type === 'input_audio_buffer.clear') {
+                  console.log('[REALTIME] 🧹 Input audio buffer cleared');
                 } else if (message.type === 'response.audio.delta') {
                   // Log audio delta messages (but not the full base64 data to reduce noise)
                   const deltaSize = message.delta ? message.delta.length : 0;

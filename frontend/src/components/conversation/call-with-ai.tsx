@@ -282,14 +282,16 @@ export function CallWithAI({ sessionId }: CallWithAIProps) {
             break;
 
           case 'input_audio_buffer.speech_started':
-            // User started speaking
+            // User started speaking - OpenAI detected speech
             setIsUserSpeaking(true);
             setIsAISpeaking(false);
+            console.log('[FRONTEND] 👤 User started speaking (detected by OpenAI VAD)');
             break;
 
           case 'input_audio_buffer.speech_stopped':
-            // User stopped speaking
+            // User stopped speaking - AI will respond after 500ms silence (configured in backend)
             setIsUserSpeaking(false);
+            console.log('[FRONTEND] 👤 User stopped speaking, waiting for AI response...');
             break;
 
           case 'session.created':
@@ -427,6 +429,9 @@ export function CallWithAI({ sessionId }: CallWithAIProps) {
           sampleRate: 24000, // OpenAI Realtime API uses 24kHz
           echoCancellation: true,
           noiseSuppression: true,
+          autoGainControl: true, // Improve audio quality
+          // Don't constrain sampleRate in getUserMedia - let browser use native rate
+          // The AudioContext will resample to 24kHz
         }
       });
       mediaStreamRef.current = stream;
@@ -438,18 +443,22 @@ export function CallWithAI({ sessionId }: CallWithAIProps) {
 
       const source = audioContextRef.current.createMediaStreamSource(stream);
       const processor = audioContextRef.current.createScriptProcessor(4096, 1, 1);
-
+      
       processor.onaudioprocess = (e) => {
         if (!isMuted && wsRef.current?.readyState === WebSocket.OPEN) {
           const inputData = e.inputBuffer.getChannelData(0);
+          
           // Convert to PCM16
           const pcm16 = new Int16Array(inputData.length);
           for (let i = 0; i < inputData.length; i++) {
-            pcm16[i] = Math.max(-32768, Math.min(32767, inputData[i] * 32768));
+            // Clamp to [-1, 1] and convert to Int16
+            const sample = Math.max(-1, Math.min(1, inputData[i]));
+            pcm16[i] = sample < 0 ? sample * 0x8000 : sample * 0x7FFF;
           }
           
-          // OpenAI Realtime API expects binary PCM16 data, not JSON
+          // OpenAI Realtime API expects binary PCM16 data
           // Send the binary PCM16 data directly
+          // OpenAI's server-side VAD will handle speech detection
           wsRef.current.send(pcm16.buffer);
         }
       };

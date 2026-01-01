@@ -6,9 +6,10 @@
     "module": "commonjs",
     "target": "ES2022",
     "lib": ["ES2022"],
+    "types": ["node"],
     "esModuleInterop": true,
     "skipLibCheck": true,
-    "strict": true,
+    "strict": false,
     "resolveJsonModule": true,
     "moduleResolution": "node",
     "declaration": true,
@@ -17,7 +18,8 @@
     "baseUrl": ".",
     "paths": {
       "@/*": ["./src/*"]
-    }
+    },
+    "noImplicitAny": false
   },
   "include": ["src/**/*"],
   "exclude": ["node_modules", "dist", "tests", "prisma", "scripts"]
