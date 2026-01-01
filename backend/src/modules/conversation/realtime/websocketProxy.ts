@@ -24,6 +24,7 @@ interface ClientConnection {
   sessionId: string;
   openaiWs: WebSocket | null;
   audioChunksSent?: number; // Track audio chunks for debugging
+  controlMessagesSent?: number; // Track control messages for debugging
 }
 
 const connections = new Map<WebSocket, ClientConnection>();
@@ -476,15 +477,41 @@ export function setupRealtimeWebSocket(server: any) {
         // Check if OpenAI connection is open AND session is ready
         if (openaiWs && openaiWs.readyState === WebSocket.OPEN && sessionReady) {
           try {
-            // Handle both JSON and binary (audio) messages
-            if (typeof data === 'string') {
-              // JSON message - forward as-is
-              console.log('[REALTIME] Forwarding JSON from client to OpenAI:', data.substring(0, 100));
-              openaiWs.send(data);
-            } else {
-              // Binary audio data - MUST be converted to base64 and sent as JSON
-              // OpenAI Realtime API expects: { type: 'input_audio_buffer.append', audio: '<base64>' }
+            // CRITICAL: Check if it's binary (audio) or text (control messages)
+            const isBinary = Buffer.isBuffer(data);
+            const isString = typeof data === 'string';
+            
+            // Debug first message to verify data type
+            if (!connection.audioChunksSent && !connection.controlMessagesSent) {
+              console.log('[REALTIME] === DATA TYPE CHECK ===');
+              console.log('Is Buffer?', Buffer.isBuffer(data));
+              console.log('Is string?', typeof data === 'string');
               
+              if (Buffer.isBuffer(data)) {
+                const firstBytes = Array.from(data.slice(0, 10));
+                console.log('First 10 bytes:', firstBytes);
+                const ascii = String.fromCharCode(...firstBytes.filter(b => b >= 32 && b <= 126));
+                console.log('As ASCII:', ascii);
+                
+                // If first byte is '{' (123), we're receiving JSON - THIS IS WRONG!
+                if (firstBytes[0] === 123) {
+                  console.error('[REALTIME] ❌ ERROR: Receiving JSON instead of binary audio!');
+                  logger.error('[REALTIME] ❌ CRITICAL: Frontend is sending JSON as audio data!');
+                  return;
+                }
+              }
+            }
+            
+            if (isString) {
+              // This is a control message (JSON string) - forward as-is
+              if (!connection.controlMessagesSent) {
+                connection.controlMessagesSent = 0;
+              }
+              connection.controlMessagesSent++;
+              console.log('[REALTIME] Forwarding control message from client to OpenAI:', data.substring(0, 100));
+              openaiWs.send(data);
+            } else if (isBinary) {
+              // This is AUDIO data - raw PCM16 binary
               // Validate audio data
               if (data.length === 0) {
                 return; // Skip empty chunks
@@ -495,39 +522,46 @@ export function setupRealtimeWebSocket(server: any) {
                 return; // Skip overly large chunks
               }
               
+              // CRITICAL: Check if this is actually JSON masquerading as binary
+              // If first byte is '{' (123), reject it
+              if (data[0] === 123) {
+                logger.error('[REALTIME] ❌ CRITICAL: Received JSON as binary audio! First byte is {');
+                console.error('[REALTIME] First 20 bytes as string:', data.slice(0, 20).toString('utf8'));
+                return; // Reject JSON sent as audio
+              }
+              
               // Verify it's PCM16 data (must be even number of bytes, 2 bytes per sample)
               // If odd, trim last byte to make it valid PCM16
-              let audioData = data;
-              if (data.length % 2 !== 0) {
+              let audioBuffer = data;
+              if (audioBuffer.length % 2 !== 0) {
                 // Trim last byte to make it even (PCM16 requires 2 bytes per sample)
-                audioData = Buffer.from(data.slice(0, data.length - 1));
-                if (audioData.length === 0) {
+                audioBuffer = audioBuffer.slice(0, audioBuffer.length - 1);
+                if (audioBuffer.length === 0) {
                   return; // Skip if nothing left
                 }
                 // Only log first occurrence to reduce noise
                 if (!connection.audioChunksSent || connection.audioChunksSent === 0) {
-                  logger.warn('[REALTIME] Audio had odd bytes, trimmed:', data.length, '->', audioData.length);
+                  logger.warn('[REALTIME] Audio had odd bytes, trimmed to:', audioBuffer.length);
                 }
               }
               
               // Debug logging (first chunk only)
               if (!connection.audioChunksSent) {
                 connection.audioChunksSent = 0;
-                const view = new DataView(audioData.buffer, audioData.byteOffset, Math.min(10, audioData.length));
+                const view = new DataView(audioBuffer.buffer, audioBuffer.byteOffset, Math.min(10, audioBuffer.length));
                 const firstSample = view.getInt16(0, true); // little-endian
-                console.log('[REALTIME] ✅ Audio received from client:');
-                console.log('- Original length:', data.length, 'bytes');
-                console.log('- Processed length:', audioData.length, 'bytes');
-                console.log('- First 10 bytes:', Array.from(audioData.slice(0, 10)));
+                console.log('[REALTIME] ✅ Raw audio buffer received:');
+                console.log('- Length:', audioBuffer.length, 'bytes');
+                console.log('- First 10 bytes:', Array.from(audioBuffer.slice(0, 10)));
                 console.log('- First sample value:', firstSample);
-                console.log('- Is valid PCM16?', audioData.length % 2 === 0);
+                console.log('- Is valid PCM16?', audioBuffer.length % 2 === 0);
               }
               connection.audioChunksSent++;
               
               try {
-                // CRITICAL: Convert Buffer to base64 and wrap in JSON message
-                // OpenAI Realtime API requires this format, NOT raw binary
-                const base64Audio = audioData.toString('base64');
+                // CRITICAL: Convert Buffer to base64 and wrap in JSON event
+                // OpenAI Realtime API requires this format: { type: 'input_audio_buffer.append', audio: '<base64>' }
+                const base64Audio = audioBuffer.toString('base64');
                 const audioEvent = {
                   type: 'input_audio_buffer.append',
                   audio: base64Audio,
@@ -543,6 +577,8 @@ export function setupRealtimeWebSocket(server: any) {
               } catch (error) {
                 logger.error('[REALTIME] ❌ Error sending audio to OpenAI:', error);
               }
+            } else {
+              logger.warn('[REALTIME] Unknown message type from client:', typeof data);
             }
           } catch (error) {
             logger.error('[REALTIME] Error forwarding message from client to OpenAI:', error);

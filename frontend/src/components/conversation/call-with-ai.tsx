@@ -130,9 +130,23 @@ export function CallWithAI({ sessionId }: CallWithAIProps) {
       const ws = new WebSocket(wsUrl);
 
       ws.onopen = () => {
-        console.log('WebSocket connected to backend proxy');
+        console.log('WebSocket connected');
         setCallState('connecting');
-        // Don't start audio capture yet - wait for connection.ready message
+
+        // Stop ring tone after 2-3 seconds (simulate AI answering)
+        setTimeout(() => {
+          if (ringToneRef.current) {
+            ringToneRef.current.pause();
+            ringToneRef.current.currentTime = 0;
+          }
+          // Play connection beep
+          playBeep(1000, 100);
+          setCallState('in-call');
+          setCallDuration(0);
+
+          // Start audio capture
+          startAudioCapture();
+        }, 2000);
       };
 
       ws.onmessage = async (event) => {
@@ -149,18 +163,12 @@ export function CallWithAI({ sessionId }: CallWithAIProps) {
               ? event.data.byteLength 
               : event.data.size;
             console.debug('Received binary audio data:', size, 'bytes');
-            
-            // Convert to ArrayBuffer if Blob, and create a copy to avoid detachment
-            let arrayBuffer: ArrayBuffer;
-            if (event.data instanceof Blob) {
-              arrayBuffer = await event.data.arrayBuffer();
-            } else {
-              // Create a copy to avoid ArrayBuffer detachment issues
-              arrayBuffer = event.data.slice(0);
-            }
-            
+            // Convert to ArrayBuffer if Blob
+            const arrayBuffer = event.data instanceof Blob 
+              ? await event.data.arrayBuffer() 
+              : event.data;
             // Play the audio chunk
-            if (audioContextRef.current && arrayBuffer.byteLength > 0) {
+            if (audioContextRef.current) {
               await playAudioChunk(arrayBuffer);
             }
           } else {
@@ -218,28 +226,18 @@ export function CallWithAI({ sessionId }: CallWithAIProps) {
       const handleRealtimeMessage = async (data: any) => {
         // Handle different message types from OpenAI Realtime API
         switch (data.type) {
-          case 'response.audio_transcript.delta':
-            // AI is generating transcript (text)
-            break;
-
-          case 'response.audio_transcript.done':
-            // AI finished generating transcript
-            console.log('AI transcript:', data.response?.audio_transcript);
+          case 'response.audio.delta':
+            // AI is speaking - audio chunk received
+            setIsAISpeaking(true);
+            setIsUserSpeaking(false);
+            // Play audio chunk if present
+            if (data.delta && audioContextRef.current) {
+              await playAudioChunk(data.delta);
+            }
             break;
 
           case 'response.audio.done':
             // AI finished speaking
-            setIsAISpeaking(false);
-            break;
-
-          case 'response.created':
-            // AI started responding
-            setIsAISpeaking(true);
-            setIsUserSpeaking(false);
-            break;
-
-          case 'response.done':
-            // AI finished responding
             setIsAISpeaking(false);
             break;
 
@@ -264,20 +262,8 @@ export function CallWithAI({ sessionId }: CallWithAIProps) {
 
           case 'connection.ready':
             // Backend proxy sent connection ready message
-            console.log('✅ Connection ready:', data.message);
-            // Now the session is fully established and ready for interaction
-            if (callState === 'connecting' || callState === 'ringing') {
-              if (ringToneRef.current) {
-                ringToneRef.current.pause();
-                ringToneRef.current.currentTime = 0;
-              }
-              // Play connection beep
-              playBeep(1000, 100);
-              setCallState('in-call');
-              setCallDuration(0);
-              // Start audio capture now that OpenAI session is ready
-              startAudioCapture();
-            }
+            console.log('Connection ready:', data.message);
+            // Don't change state here, wait for OpenAI session to be ready
             break;
 
           case 'error':
@@ -300,11 +286,8 @@ export function CallWithAI({ sessionId }: CallWithAIProps) {
 
   // Convert PCM16 to WAV format for Web Audio API
   const pcm16ToWav = (pcm16Data: ArrayBuffer, sampleRate: number = 24000): ArrayBuffer => {
-    // Create a copy of the ArrayBuffer to avoid detachment issues
-    const pcm16Array = new Int16Array(pcm16Data);
-    const length = pcm16Array.length;
-    
-    // Create new ArrayBuffer for WAV (don't reuse the input buffer)
+    const pcm16 = new Int16Array(pcm16Data);
+    const length = pcm16.length;
     const buffer = new ArrayBuffer(44 + length * 2);
     const view = new DataView(buffer);
     
@@ -329,9 +312,9 @@ export function CallWithAI({ sessionId }: CallWithAIProps) {
     writeString(36, 'data');
     view.setUint32(40, length * 2, true);
     
-    // Copy PCM data to new buffer
+    // Copy PCM data
     const wavData = new Int16Array(buffer, 44);
-    wavData.set(pcm16Array);
+    wavData.set(pcm16);
     
     return buffer;
   };
@@ -358,14 +341,11 @@ export function CallWithAI({ sessionId }: CallWithAIProps) {
         // OpenAI sends PCM16 audio - convert to WAV first
         try {
           // Try direct decode first (in case it's already WAV/MP3)
-          audioBuffer = await audioContextRef.current.decodeAudioData(audioData.slice(0)); // Create copy
+          audioBuffer = await audioContextRef.current.decodeAudioData(audioData);
         } catch (decodeError) {
           // If decode fails, assume it's PCM16 and convert to WAV
           console.debug('Decode failed, converting PCM16 to WAV:', decodeError);
-          
-          // Create a copy of the ArrayBuffer to avoid detachment
-          const audioDataCopy = audioData.slice(0);
-          const wavBuffer = pcm16ToWav(audioDataCopy, 24000); // OpenAI uses 24kHz
+          const wavBuffer = pcm16ToWav(audioData, 24000); // OpenAI uses 24kHz
           audioBuffer = await audioContextRef.current.decodeAudioData(wavBuffer);
         }
       }
@@ -385,68 +365,36 @@ export function CallWithAI({ sessionId }: CallWithAIProps) {
   // Start audio capture
   const startAudioCapture = async () => {
     try {
-      // CRITICAL: Capture audio with EXACT specifications for OpenAI Realtime API
       const stream = await navigator.mediaDevices.getUserMedia({ 
         audio: {
-          channelCount: 1, // Mono (1 channel)
-          sampleRate: 24000, // 24kHz sample rate (REQUIRED)
+          channelCount: 1,
+          sampleRate: 24000, // OpenAI Realtime API uses 24kHz
           echoCancellation: true,
           noiseSuppression: true,
-          autoGainControl: true,
         }
       });
       mediaStreamRef.current = stream;
 
-      // Create audio context with EXACT sample rate
+      // Create audio context for processing
       if (!audioContextRef.current) {
         audioContextRef.current = new AudioContext({ sampleRate: 24000 });
       }
 
       const source = audioContextRef.current.createMediaStreamSource(stream);
-      // Use 4096 buffer size (standard for real-time audio)
-      // This will create 4096 samples * 2 bytes = 8192 bytes (even number)
       const processor = audioContextRef.current.createScriptProcessor(4096, 1, 1);
-      
-      // Throttle audio sending to prevent overwhelming OpenAI's server
-      let lastSendTime = 0;
-      const minInterval = 20; // Minimum 20ms between sends (50 chunks per second max)
 
       processor.onaudioprocess = (e) => {
         if (!isMuted && wsRef.current?.readyState === WebSocket.OPEN) {
-          const now = Date.now();
-          // Throttle to prevent sending too fast
-          if (now - lastSendTime < minInterval) {
-            return; // Skip this chunk if sending too fast
-          }
-          lastSendTime = now;
-          
-          // Get Float32 audio data (range: -1.0 to 1.0)
-          const inputData = e.inputBuffer.getChannelData(0); // Float32Array, mono
-          
-          // CRITICAL: Convert Float32 to Int16 PCM16 (little-endian)
-          // OpenAI requires: 16-bit Linear PCM, 24000Hz, mono, little-endian
+          const inputData = e.inputBuffer.getChannelData(0);
+          // Convert to PCM16
           const pcm16 = new Int16Array(inputData.length);
           for (let i = 0; i < inputData.length; i++) {
-            // Clamp to [-1, 1] range
-            const s = Math.max(-1, Math.min(1, inputData[i]));
-            // Convert to Int16: negative values use 0x8000, positive use 0x7FFF
-            pcm16[i] = s < 0 ? s * 0x8000 : s * 0x7FFF;
+            pcm16[i] = Math.max(-32768, Math.min(32767, inputData[i] * 32768));
           }
           
-          // Send raw PCM16 binary data directly from Int16Array buffer
-          // Int16Array.buffer is guaranteed to be even number of bytes (2 bytes per sample)
-          try {
-            // Verify it's even number of bytes before sending
-            const byteLength = pcm16.buffer.byteLength;
-            if (byteLength % 2 !== 0) {
-              console.warn('Audio buffer has odd number of bytes, skipping:', byteLength);
-              return;
-            }
-            // Send the ArrayBuffer directly (it's already the correct format)
-            wsRef.current.send(pcm16.buffer);
-          } catch (error) {
-            console.error('Error sending audio:', error);
-          }
+          // OpenAI Realtime API expects binary PCM16 data, not JSON
+          // Send the binary PCM16 data directly
+          wsRef.current.send(pcm16.buffer);
         }
       };
 
