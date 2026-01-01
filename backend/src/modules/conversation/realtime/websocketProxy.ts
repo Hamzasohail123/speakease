@@ -361,6 +361,10 @@ export function setupRealtimeWebSocket(server: any) {
                   console.log('[REALTIME] 👤 User started speaking');
                 } else if (message.type === 'input_audio_buffer.speech_stopped') {
                   console.log('[REALTIME] 👤 User stopped speaking');
+                } else if (message.type === 'response.audio.delta') {
+                  // Log audio delta messages (but not the full base64 data to reduce noise)
+                  const deltaSize = message.delta ? message.delta.length : 0;
+                  console.log(`[REALTIME] 🔊 Forwarding audio delta to client: ${deltaSize} bytes (base64)`);
                 }
                 
                   // Forward JSON message as string
