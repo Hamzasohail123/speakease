@@ -345,13 +345,21 @@ export function setupRealtimeWebSocket(server: any) {
                   logger.info(`[REALTIME] Forwarding ${message.type} to client`);
                 }
                 
-                // Save transcripts
+                // Save transcripts and log important events
                 if (message.type === 'input_audio_buffer.committed' && message.input_audio_buffer?.transcript) {
-                  // User speech transcribed
+                  console.log('[REALTIME] 👤 User said:', message.input_audio_buffer.transcript);
                   saveTranscript(sessionId, 'user', message.input_audio_buffer.transcript);
                 } else if (message.type === 'response.audio_transcript.done' && message.response?.audio_transcript) {
-                  // AI response transcribed
+                  console.log('[REALTIME] 🤖 AI said:', message.response.audio_transcript);
                   saveTranscript(sessionId, 'assistant', message.response.audio_transcript);
+                } else if (message.type === 'response.created') {
+                  console.log('[REALTIME] 🤖 AI started responding');
+                } else if (message.type === 'response.done') {
+                  console.log('[REALTIME] 🤖 AI finished responding');
+                } else if (message.type === 'input_audio_buffer.speech_started') {
+                  console.log('[REALTIME] 👤 User started speaking');
+                } else if (message.type === 'input_audio_buffer.speech_stopped') {
+                  console.log('[REALTIME] 👤 User stopped speaking');
                 }
                 
                   // Forward JSON message as string
@@ -488,28 +496,38 @@ export function setupRealtimeWebSocket(server: any) {
               }
               
               // Verify it's PCM16 data (must be even number of bytes, 2 bytes per sample)
+              // If odd, trim last byte to make it valid PCM16
+              let audioData = data;
               if (data.length % 2 !== 0) {
-                logger.warn('[REALTIME] Invalid PCM16 data - odd number of bytes:', data.length);
-                return;
+                // Trim last byte to make it even (PCM16 requires 2 bytes per sample)
+                audioData = Buffer.from(data.slice(0, data.length - 1));
+                if (audioData.length === 0) {
+                  return; // Skip if nothing left
+                }
+                // Only log first occurrence to reduce noise
+                if (!connection.audioChunksSent || connection.audioChunksSent === 0) {
+                  logger.warn('[REALTIME] Audio had odd bytes, trimmed:', data.length, '->', audioData.length);
+                }
               }
               
               // Debug logging (first chunk only)
               if (!connection.audioChunksSent) {
                 connection.audioChunksSent = 0;
-                const view = new DataView(data.buffer, data.byteOffset, Math.min(10, data.length));
+                const view = new DataView(audioData.buffer, audioData.byteOffset, Math.min(10, audioData.length));
                 const firstSample = view.getInt16(0, true); // little-endian
-                console.log('[REALTIME] Audio received from client:');
-                console.log('- Length:', data.length, 'bytes');
-                console.log('- First 10 bytes:', Array.from(data.slice(0, 10)));
+                console.log('[REALTIME] ✅ Audio received from client:');
+                console.log('- Original length:', data.length, 'bytes');
+                console.log('- Processed length:', audioData.length, 'bytes');
+                console.log('- First 10 bytes:', Array.from(audioData.slice(0, 10)));
                 console.log('- First sample value:', firstSample);
-                console.log('- Is valid PCM16?', data.length % 2 === 0);
+                console.log('- Is valid PCM16?', audioData.length % 2 === 0);
               }
               connection.audioChunksSent++;
               
               try {
                 // CRITICAL: Convert Buffer to base64 and wrap in JSON message
                 // OpenAI Realtime API requires this format, NOT raw binary
-                const base64Audio = data.toString('base64');
+                const base64Audio = audioData.toString('base64');
                 const audioEvent = {
                   type: 'input_audio_buffer.append',
                   audio: base64Audio,
@@ -520,10 +538,10 @@ export function setupRealtimeWebSocket(server: any) {
                 
                 // Only log occasionally to reduce noise
                 if (connection.audioChunksSent % 50 === 0) {
-                  console.log(`[REALTIME] Sent ${connection.audioChunksSent} audio chunks`);
+                  console.log(`[REALTIME] ✅ Sent ${connection.audioChunksSent} audio chunks to OpenAI`);
                 }
               } catch (error) {
-                logger.error('[REALTIME] Error sending audio to OpenAI:', error);
+                logger.error('[REALTIME] ❌ Error sending audio to OpenAI:', error);
               }
             }
           } catch (error) {

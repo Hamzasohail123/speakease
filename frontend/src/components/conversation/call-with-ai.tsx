@@ -218,18 +218,28 @@ export function CallWithAI({ sessionId }: CallWithAIProps) {
       const handleRealtimeMessage = async (data: any) => {
         // Handle different message types from OpenAI Realtime API
         switch (data.type) {
-          case 'response.audio.delta':
-            // AI is speaking - audio chunk received
-            setIsAISpeaking(true);
-            setIsUserSpeaking(false);
-            // Play audio chunk if present
-            if (data.delta && audioContextRef.current) {
-              await playAudioChunk(data.delta);
-            }
+          case 'response.audio_transcript.delta':
+            // AI is generating transcript (text)
+            break;
+
+          case 'response.audio_transcript.done':
+            // AI finished generating transcript
+            console.log('AI transcript:', data.response?.audio_transcript);
             break;
 
           case 'response.audio.done':
             // AI finished speaking
+            setIsAISpeaking(false);
+            break;
+
+          case 'response.created':
+            // AI started responding
+            setIsAISpeaking(true);
+            setIsUserSpeaking(false);
+            break;
+
+          case 'response.done':
+            // AI finished responding
             setIsAISpeaking(false);
             break;
 
@@ -394,6 +404,7 @@ export function CallWithAI({ sessionId }: CallWithAIProps) {
 
       const source = audioContextRef.current.createMediaStreamSource(stream);
       // Use 4096 buffer size (standard for real-time audio)
+      // This will create 4096 samples * 2 bytes = 8192 bytes (even number)
       const processor = audioContextRef.current.createScriptProcessor(4096, 1, 1);
       
       // Throttle audio sending to prevent overwhelming OpenAI's server
@@ -422,9 +433,16 @@ export function CallWithAI({ sessionId }: CallWithAIProps) {
             pcm16[i] = s < 0 ? s * 0x8000 : s * 0x7FFF;
           }
           
-          // Send raw PCM16 binary data (ArrayBuffer)
-          // Backend will convert to base64 and wrap in JSON
+          // Send raw PCM16 binary data directly from Int16Array buffer
+          // Int16Array.buffer is guaranteed to be even number of bytes (2 bytes per sample)
           try {
+            // Verify it's even number of bytes before sending
+            const byteLength = pcm16.buffer.byteLength;
+            if (byteLength % 2 !== 0) {
+              console.warn('Audio buffer has odd number of bytes, skipping:', byteLength);
+              return;
+            }
+            // Send the ArrayBuffer directly (it's already the correct format)
             wsRef.current.send(pcm16.buffer);
           } catch (error) {
             console.error('Error sending audio:', error);
