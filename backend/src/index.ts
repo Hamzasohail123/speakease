@@ -21,7 +21,8 @@ import { setupRealtimeWebSocket } from './modules/conversation/realtime/websocke
 dotenv.config();
 
 const app = express();
-const PORT = process.env.PORT || 3001;
+const PORT = parseInt(process.env.PORT || '3001', 10);
+const HOST = process.env.HOST || '0.0.0.0'; // Listen on all interfaces for Render
 const FRONTEND_URL = process.env.FRONTEND_URL || 'http://localhost:3000';
 
 // Middleware
@@ -29,19 +30,43 @@ app.use(cors({ origin: FRONTEND_URL, credentials: true }));
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
-// Health check
+// Health check (non-blocking, quick response)
 app.get('/health', async (req, res) => {
-  const dbStatus = await verifyDatabaseSetup();
-  
-  res.json({
-    status: dbStatus.connected ? 'ok' : 'degraded',
-    timestamp: new Date().toISOString(),
-    database: {
-      connected: dbStatus.connected,
-      pgvectorInstalled: dbStatus.pgvectorInstalled,
-      tablesExist: dbStatus.tablesExist,
-    },
-  });
+  try {
+    // Quick health check - don't block on database verification
+    res.json({
+      status: 'ok',
+      timestamp: new Date().toISOString(),
+      uptime: process.uptime(),
+    });
+  } catch (error) {
+    res.status(500).json({
+      status: 'error',
+      timestamp: new Date().toISOString(),
+    });
+  }
+});
+
+// Detailed health check endpoint
+app.get('/health/detailed', async (req, res) => {
+  try {
+    const dbStatus = await verifyDatabaseSetup();
+    res.json({
+      status: dbStatus.connected ? 'ok' : 'degraded',
+      timestamp: new Date().toISOString(),
+      database: {
+        connected: dbStatus.connected,
+        pgvectorInstalled: dbStatus.pgvectorInstalled,
+        tablesExist: dbStatus.tablesExist,
+      },
+    });
+  } catch (error) {
+    res.status(500).json({
+      status: 'error',
+      timestamp: new Date().toISOString(),
+      error: error instanceof Error ? error.message : 'Unknown error',
+    });
+  }
 });
 
 // API Routes
@@ -65,10 +90,33 @@ const server = createServer(app);
 setupRealtimeWebSocket(server);
 
 // Start server
-server.listen(PORT, () => {
-  logger.info(`🚀 Server running on port ${PORT}`);
+server.listen(PORT, HOST, () => {
+  logger.info(`🚀 Server running on ${HOST}:${PORT}`);
   logger.info(`📝 Environment: ${process.env.NODE_ENV || 'development'}`);
   logger.info(`🔌 Realtime WebSocket ready on /api/v1/conversation/realtime/ws`);
+  logger.info(`❤️  Health check available at /health`);
+});
+
+// Handle server errors
+server.on('error', (error: NodeJS.ErrnoException) => {
+  if (error.syscall !== 'listen') {
+    throw error;
+  }
+
+  const bind = typeof PORT === 'string' ? `Pipe ${PORT}` : `Port ${PORT}`;
+
+  switch (error.code) {
+    case 'EACCES':
+      logger.error(`${bind} requires elevated privileges`);
+      process.exit(1);
+      break;
+    case 'EADDRINUSE':
+      logger.error(`${bind} is already in use`);
+      process.exit(1);
+      break;
+    default:
+      throw error;
+  }
 });
 
 export default app;
