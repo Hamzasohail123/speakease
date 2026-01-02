@@ -1,0 +1,49 @@
+name: CI
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main, develop]
+
+jobs:
+  lint-and-build:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+          cache: 'npm'
+      
+      - name: Install dependencies
+        run: npm install
+      
+      - name: Lint shared package
+        run: npm run lint --workspace=shared
+        continue-on-error: true
+      
+      - name: Lint backend
+        run: npm run lint --workspace=backend
+        continue-on-error: true
+      
+      - name: Lint frontend
+        run: npm run lint --workspace=frontend
+        continue-on-error: true
+      
+      - name: Type check
+        run: npm run type-check
+      
+      - name: Build shared package
+        run: npm run build --workspace=shared
+      
+      - name: Build backend
+        run: npm run build --workspace=backend
+      
+      - name: Build frontend
+        run: npm run build --workspace=frontend
+

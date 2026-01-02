@@ -30,6 +30,21 @@ app.use(cors({ origin: FRONTEND_URL, credentials: true }));
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
+// Root endpoint - API information
+app.get('/', (req, res) => {
+  res.json({
+    name: 'SpeakEase API',
+    version: '1.0.0',
+    status: 'running',
+    endpoints: {
+      health: '/health',
+      api: '/api/v1',
+      docs: 'See API documentation for available endpoints',
+    },
+    timestamp: new Date().toISOString(),
+  });
+});
+
 // Health check (non-blocking, quick response)
 app.get('/health', async (req, res) => {
   try {
