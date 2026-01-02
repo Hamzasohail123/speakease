@@ -18,10 +18,10 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: '18'
-          cache: 'npm'
+          # Don't use cache for monorepo - install manually
       
       - name: Install dependencies
-        run: npm install
+        run: npm install --include=dev
       
       - name: Lint shared package
         run: npm run lint --workspace=shared
