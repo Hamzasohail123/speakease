@@ -23,6 +23,9 @@ jobs:
       - name: Install dependencies
         run: npm install --include=dev
       
+      - name: Build shared package first (required by other packages)
+        run: npm run build --workspace=shared
+      
       - name: Lint shared package
         run: npm run lint --workspace=shared
         continue-on-error: true
@@ -37,9 +40,6 @@ jobs:
       
       - name: Type check
         run: npm run type-check
-      
-      - name: Build shared package
-        run: npm run build --workspace=shared
       
       - name: Build backend
         run: npm run build --workspace=backend
