@@ -13,7 +13,7 @@ export const authApi = {
 
   login: async (data: LoginRequest): Promise<AuthResponse> => {
     const response = await apiClient.post<AuthResponse>('/api/v1/auth/login', data);
-    if (response.data) {
+    if (response.data?.token) {
       apiClient.setToken(response.data.token);
     }
     return response.data!;

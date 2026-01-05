@@ -38,9 +38,16 @@ export function useAuth() {
   const loginMutation = useMutation({
     mutationFn: authApi.login,
     onSuccess: (data) => {
-      setAuth(data.user, data.token);
-      queryClient.setQueryData(['auth', 'me'], data.user);
-      router.push('/dashboard');
+      if (data.token) {
+        setAuth(data.user, data.token);
+        queryClient.setQueryData(['auth', 'me'], data.user);
+        
+        // Check for returnUrl in query params
+        const urlParams = new URLSearchParams(window.location.search);
+        const returnUrl = urlParams.get('returnUrl');
+        const redirectTo = returnUrl || '/dashboard';
+        router.push(redirectTo);
+      }
     },
   });
 
