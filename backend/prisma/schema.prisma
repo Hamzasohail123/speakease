@@ -1,27 +1,25 @@
-// This is your Prisma schema file,
-// learn more about it in the docs: https://pris.ly/d/prisma-schema
-
 generator client {
   provider = "prisma-client-js"
 }
 
 datasource db {
-  provider  = "postgresql"
-  url       = env("DATABASE_URL")
-  // directUrl removed - not needed for Render free tier (no connection pooling)
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
 }
 
 model User {
-  id        String   @id @default(cuid())
-  email     String   @unique
-  name      String
-  passwordHash String
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  profile  UserProfile?
-  sessions Session[]
-  memories Memory[]
+  id                           String       @id @default(cuid())
+  email                        String       @unique
+  name                         String
+  passwordHash                 String
+  createdAt                    DateTime     @default(now())
+  updatedAt                    DateTime     @updatedAt
+  emailVerified                Boolean      @default(false)
+  emailVerificationToken       String?
+  emailVerificationTokenExpiry DateTime?
+  memories                     Memory[]
+  sessions                     Session[]
+  profile                      UserProfile?
 
   @@map("users")
 }
@@ -31,11 +29,10 @@ model UserProfile {
   userId    String   @unique
   bio       String?
   goals     String[] @default([])
-  documents String[] @default([]) // URLs or paths to uploaded documents
+  documents String[] @default([])
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
-
-  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@map("user_profiles")
 }
@@ -48,36 +45,77 @@ model Topic {
   isDaily     Boolean   @default(false)
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt
-
-  sessions Session[]
+  sessions    Session[]
 
   @@map("topics")
 }
 
 model Session {
-  id        String        @id @default(cuid())
-  userId    String
-  topicId   String?
-  duration  Int           // in minutes
-  startedAt DateTime      @default(now())
-  endedAt   DateTime?
-  transcript String?      @db.Text
-  summary   String?       @db.Text
-  status    SessionStatus @default(PENDING)
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  user     User      @relation(fields: [userId], references: [id], onDelete: Cascade)
-  topic    Topic?    @relation(fields: [topicId], references: [id], onDelete: SetNull)
-  messages Message[]
-  feedback Feedback?
-  memories Memory[]
+  id         String        @id @default(cuid())
+  userId     String
+  topicId    String?
+  duration   Int
+  startedAt  DateTime      @default(now())
+  endedAt    DateTime?
+  transcript String?
+  summary    String?
+  status     SessionStatus @default(PENDING)
+  createdAt  DateTime      @default(now())
+  updatedAt  DateTime      @updatedAt
+  feedback   Feedback?
+  memories   Memory[]
+  messages   Message[]
+  topic      Topic?        @relation(fields: [topicId], references: [id])
+  user       User          @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId])
   @@index([status])
   @@index([startedAt])
   @@map("sessions")
+}
+
+model Message {
+  id        String      @id @default(cuid())
+  sessionId String
+  role      MessageRole
+  content   String
+  timestamp DateTime    @default(now())
+  createdAt DateTime    @default(now())
+  session   Session     @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+
+  @@index([sessionId])
+  @@index([timestamp])
+  @@map("messages")
+}
+
+model Memory {
+  id        String                 @id @default(cuid())
+  userId    String
+  sessionId String?
+  content   String
+  embedding Unsupported("vector")?
+  summary   String
+  metadata  Json?
+  createdAt DateTime               @default(now())
+  session   Session?               @relation(fields: [sessionId], references: [id])
+  user      User                   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([sessionId])
+  @@map("memories")
+}
+
+model Feedback {
+  id           String   @id @default(cuid())
+  sessionId    String   @unique
+  mistakes     Json
+  improvements String[] @default([])
+  tips         String[] @default([])
+  reportJson   Json
+  createdAt    DateTime @default(now())
+  session      Session  @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+
+  @@map("feedback")
 }
 
 enum SessionStatus {
@@ -87,55 +125,7 @@ enum SessionStatus {
   CANCELLED
 }
 
-model Message {
-  id        String      @id @default(cuid())
-  sessionId String
-  role      MessageRole
-  content   String      @db.Text
-  timestamp DateTime    @default(now())
-  createdAt DateTime    @default(now())
-
-  session Session @relation(fields: [sessionId], references: [id], onDelete: Cascade)
-
-  @@index([sessionId])
-  @@index([timestamp])
-  @@map("messages")
-}
-
 enum MessageRole {
   USER
   ASSISTANT
 }
-
-model Memory {
-  id        String   @id @default(cuid())
-  userId    String
-  sessionId String?
-  content   String   @db.Text
-  embedding Unsupported("vector(1536)")? // pgvector - 1536 dimensions for OpenAI embeddings
-  summary   String   @db.Text
-  metadata  Json?    // Store additional context as JSON
-  createdAt DateTime @default(now())
-
-  user    User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  session Session? @relation(fields: [sessionId], references: [id], onDelete: SetNull)
-
-  @@index([userId])
-  @@index([sessionId])
-  @@map("memories")
-}
-
-model Feedback {
-  id         String   @id @default(cuid())
-  sessionId  String   @unique
-  mistakes   Json     // Array of Mistake objects
-  improvements String[] @default([])
-  tips       String[] @default([])
-  reportJson Json     // Full report as JSON
-  createdAt  DateTime @default(now())
-
-  session Session @relation(fields: [sessionId], references: [id], onDelete: Cascade)
-
-  @@map("feedback")
-}
-

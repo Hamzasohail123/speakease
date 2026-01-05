@@ -9,7 +9,7 @@ export function generateReport(feedback: Feedback): string {
   // Mistakes section
   if (feedback.mistakes && feedback.mistakes.length > 0) {
     report += '1. Repeated Mistakes\n\n';
-    feedback.mistakes.forEach((mistake, index) => {
+    feedback.mistakes.forEach((mistake: Mistake, index: number) => {
       report += `${index + 1}. ${mistake.category}\n`;
       report += `   ${mistake.explanation}\n`;
       if (mistake.incorrect) {
@@ -28,7 +28,7 @@ export function generateReport(feedback: Feedback): string {
   // Improvements section
   if (feedback.improvements && feedback.improvements.length > 0) {
     report += '2. Good Improvements\n\n';
-    feedback.improvements.forEach((improvement) => {
+    feedback.improvements.forEach((improvement: string) => {
       report += `- ${improvement}\n`;
     });
     report += '\n';
@@ -37,7 +37,7 @@ export function generateReport(feedback: Feedback): string {
   // Tips section
   if (feedback.tips && feedback.tips.length > 0) {
     report += '3. Tips for Next Session\n\n';
-    feedback.tips.forEach((tip) => {
+    feedback.tips.forEach((tip: string) => {
       report += `- ${tip}\n`;
     });
     report += '\n';

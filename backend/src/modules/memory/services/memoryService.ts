@@ -28,7 +28,7 @@ export async function getUserMemories(
       },
     });
 
-    return memories.map((m) => m.summary);
+    return memories.map((m: { summary: string }) => m.summary);
   } catch (error) {
     logger.error('Error fetching user memories:', error);
     return [];
@@ -56,7 +56,7 @@ export async function getSessionMemories(
       },
     });
 
-    return memories.map((m) => m.summary);
+    return memories.map((m: { summary: string }) => m.summary);
   } catch (error) {
     logger.error('Error fetching session memories:', error);
     return [];

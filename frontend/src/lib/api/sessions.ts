@@ -20,9 +20,11 @@ export const sessionsApi = {
     return response.data!.session;
   },
 
-  getHistory: async (limit = 20, offset = 0): Promise<Session[]> => {
+  getHistory: async (limit?: number, offset = 0): Promise<Session[]> => {
+    // If no limit provided, fetch all sessions
+    const limitParam = limit ? `limit=${limit}&` : '';
     const response = await apiClient.get<{ sessions: Session[] }>(
-      `/api/v1/sessions/history?limit=${limit}&offset=${offset}`
+      `/api/v1/sessions/history?${limitParam}offset=${offset}`
     );
     return response.data!.sessions;
   },
