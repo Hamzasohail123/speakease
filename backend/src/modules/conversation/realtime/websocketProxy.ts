@@ -348,11 +348,21 @@ export function setupRealtimeWebSocket(server: any) {
                 
                 // Save transcripts and log important events
                 if (message.type === 'input_audio_buffer.committed' && message.input_audio_buffer?.transcript) {
-                  console.log('[REALTIME] 👤 User said:', message.input_audio_buffer.transcript);
-                  saveTranscript(sessionId, 'user', message.input_audio_buffer.transcript);
+                  const userTranscript = message.input_audio_buffer.transcript;
+                  console.log('[REALTIME] 👤 User said:', userTranscript);
+                  if (userTranscript && userTranscript.trim().length > 0) {
+                    saveTranscript(sessionId, 'user', userTranscript).catch((err) => {
+                      logger.error('[REALTIME] Failed to save user transcript:', err);
+                    });
+                  }
                 } else if (message.type === 'response.audio_transcript.done' && message.response?.audio_transcript) {
-                  console.log('[REALTIME] 🤖 AI said:', message.response.audio_transcript);
-                  saveTranscript(sessionId, 'assistant', message.response.audio_transcript);
+                  const aiTranscript = message.response.audio_transcript;
+                  console.log('[REALTIME] 🤖 AI said:', aiTranscript);
+                  if (aiTranscript && aiTranscript.trim().length > 0) {
+                    saveTranscript(sessionId, 'assistant', aiTranscript).catch((err) => {
+                      logger.error('[REALTIME] Failed to save AI transcript:', err);
+                    });
+                  }
                 } else if (message.type === 'response.created') {
                   console.log('[REALTIME] 🤖 AI started responding (after 500ms silence)');
                 } else if (message.type === 'response.done') {

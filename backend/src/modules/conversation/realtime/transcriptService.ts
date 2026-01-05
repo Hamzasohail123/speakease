@@ -16,14 +16,23 @@ export async function saveTranscript(
   content: string
 ): Promise<void> {
   try {
-    await addMessage(
+    if (!content || content.trim().length === 0) {
+      logger.warn(`[TRANSCRIPT] Skipping empty transcript for ${role} in session ${sessionId}`);
+      return;
+    }
+    
+    logger.info(`[TRANSCRIPT] Saving ${role} transcript: sessionId=${sessionId}, content="${content.substring(0, 100)}..."`);
+    
+    const message = await addMessage(
       sessionId,
       role === 'user' ? MessageRole.USER : MessageRole.ASSISTANT,
       content
     );
-    logger.debug(`Saved transcript: ${role} - ${content.substring(0, 50)}...`);
+    
+    logger.info(`[TRANSCRIPT] ✅ Successfully saved ${role} message: id=${message.id}, sessionId=${sessionId}`);
   } catch (error) {
-    logger.error('Error saving transcript:', error);
+    logger.error(`[TRANSCRIPT] ❌ Error saving transcript for ${role} in session ${sessionId}:`, error);
+    throw error; // Re-throw to surface the error
   }
 }
 

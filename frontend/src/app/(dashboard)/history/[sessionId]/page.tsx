@@ -182,9 +182,9 @@ export default function SessionDetailPage() {
                   <MessageSquare className="h-6 w-6 text-white" />
                 </div>
                 <div>
-                  <CardTitle className="text-2xl">Conversation Transcript</CardTitle>
+                  <CardTitle className="text-2xl">Session Transcript</CardTitle>
                   <CardDescription className="text-base">
-                    Full record of your practice session ({userMessages} from you, {aiMessages} from AI)
+                    Full record of your practice session - includes both chat and real-time call messages ({userMessages} from you, {aiMessages} from AI)
                   </CardDescription>
                 </div>
               </div>
@@ -257,7 +257,7 @@ export default function SessionDetailPage() {
                 </CardContent>
               </Card>
             ) : feedback ? (
-              <FeedbackDisplay feedback={feedback} />
+              <FeedbackDisplay feedback={feedback} sessionId={sessionId} />
             ) : (
               <Card className="border-2">
                 <CardContent className="py-12 text-center">
