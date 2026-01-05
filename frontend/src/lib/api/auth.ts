@@ -4,7 +4,8 @@ import { AuthResponse, RegisterRequest, LoginRequest, User } from '@ai-english-s
 export const authApi = {
   register: async (data: RegisterRequest): Promise<AuthResponse> => {
     const response = await apiClient.post<AuthResponse>('/api/v1/auth/register', data);
-    if (response.data) {
+    // Registration no longer returns tokens - user must verify email first
+    if (response.data?.token) {
       apiClient.setToken(response.data.token);
     }
     return response.data!;
@@ -26,6 +27,14 @@ export const authApi = {
   getMe: async (): Promise<User> => {
     const response = await apiClient.get<{ user: User }>('/api/v1/auth/me');
     return response.data!.user;
+  },
+
+  verifyEmail: async (token: string): Promise<void> => {
+    await apiClient.post('/api/v1/auth/verify-email', { token });
+  },
+
+  resendVerification: async (email: string): Promise<void> => {
+    await apiClient.post('/api/v1/auth/resend-verification', { email });
   },
 };
 

@@ -1,9 +1,27 @@
+'use client';
+
+import { useEffect } from 'react';
+import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { RegisterForm } from '@/components/forms/register-form';
 import { Sparkles, MessageSquare, Zap, Target, TrendingUp } from 'lucide-react';
+import { useAuthStore } from '@/stores/auth-store';
 
 export default function RegisterPage() {
+  const router = useRouter();
+  const { user, token } = useAuthStore();
+  const isAuthenticated = !!user && !!token;
+
+  useEffect(() => {
+    if (isAuthenticated) {
+      router.push('/dashboard');
+    }
+  }, [isAuthenticated, router]);
+
+  if (isAuthenticated) {
+    return null;
+  }
   return (
     <div className="min-h-screen flex items-center justify-center p-4 relative overflow-hidden">
       {/* Animated Background */}

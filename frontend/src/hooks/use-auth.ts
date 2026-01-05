@@ -22,9 +22,15 @@ export function useAuth() {
   const registerMutation = useMutation({
     mutationFn: authApi.register,
     onSuccess: (data) => {
-      setAuth(data.user, data.token);
-      queryClient.setQueryData(['auth', 'me'], data.user);
-      router.push('/dashboard');
+      // Registration no longer returns tokens - user must verify email first
+      // Don't set auth or redirect - show verification message instead
+      if (data.token) {
+        // Legacy support - if token exists, proceed as before
+        setAuth(data.user, data.token);
+        queryClient.setQueryData(['auth', 'me'], data.user);
+        router.push('/dashboard');
+      }
+      // Otherwise, the form will handle showing verification message
     },
   });
 

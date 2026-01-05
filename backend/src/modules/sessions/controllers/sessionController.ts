@@ -106,7 +106,8 @@ export async function getHistory(req: Request, res: Response, next: NextFunction
       });
     }
 
-    const limit = parseInt(req.query.limit as string) || 20;
+    // Fetch all sessions - use a very high limit to get all
+    const limit = parseInt(req.query.limit as string) || 10000;
     const offset = parseInt(req.query.offset as string) || 0;
 
     const sessions = await getUserSessionHistory(req.user.id, limit, offset);

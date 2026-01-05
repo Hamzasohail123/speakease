@@ -5,11 +5,14 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { PasswordInput } from '@/components/ui/password-input';
 import { Label } from '@/components/ui/label';
 import { useAuth } from '@/hooks/use-auth';
 import { useToast } from '@/hooks/use-toast';
-import { Mail, Lock, Loader2, ArrowRight } from 'lucide-react';
+import { authApi } from '@/lib/api';
+import { Mail, Lock, Loader2, ArrowRight, Mail as MailIcon } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { useState } from 'react';
 
 const loginSchema = z.object({
   email: z.string().email('Invalid email address'),
@@ -21,6 +24,7 @@ type LoginFormData = z.infer<typeof loginSchema>;
 export function LoginForm() {
   const { login, isLoggingIn } = useAuth();
   const { toast } = useToast();
+  const [emailForResend, setEmailForResend] = useState<string>('');
 
   const {
     register,
@@ -32,20 +36,32 @@ export function LoginForm() {
 
   const onSubmit = async (data: LoginFormData) => {
     try {
-      await login(data,{
-        onSuccess: () =>{
+      await login(data, {
+        onSuccess: () => {
           toast({
             title: 'Success',
-            description: 'Logged in successfully',  
+            description: 'Logged in successfully',
           });
         },
-        onError: (error) =>{
-          toast({
-            title: 'Error',
-            description: error instanceof Error ? error.message : 'Login failed',
-            variant: 'destructive',
-          });
-        }
+        onError: (error) => {
+          const errorMessage = error instanceof Error ? error.message : 'Login failed';
+          setEmailForResend(data.email);
+          
+          // Check if error is about email verification
+          if (errorMessage.includes('verify') || errorMessage.includes('verification')) {
+            toast({
+              title: 'Email Not Verified',
+              description: errorMessage,
+              variant: 'destructive',
+            });
+          } else {
+            toast({
+              title: 'Error',
+              description: errorMessage,
+              variant: 'destructive',
+            });
+          }
+        },
       });
     } catch (error) {
       console.error(error);
@@ -96,12 +112,11 @@ export function LoginForm() {
           Password
         </Label>
         <div className="relative group">
-          <Input
+          <PasswordInput
             id="password"
-            type="password"
             placeholder="••••••••"
             className={cn(
-              "h-11 pl-4 pr-4 text-base transition-all duration-200",
+              "h-11 pl-4 pr-10 text-base transition-all duration-200",
               "border-2 focus:border-purple-500 dark:focus:border-purple-400",
               "bg-white dark:bg-gray-950",
               "group-hover:border-purple-300 dark:group-hover:border-purple-700",
@@ -117,6 +132,39 @@ export function LoginForm() {
           )}
         </div>
       </div>
+
+      {/* Resend Verification */}
+      {emailForResend && (
+        <div className="p-3 rounded-lg bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800">
+          <p className="text-sm text-blue-900 dark:text-blue-100 mb-2">
+            Need to resend the verification email?
+          </p>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            onClick={async () => {
+              try {
+                await authApi.resendVerification(emailForResend);
+                toast({
+                  title: 'Verification Email Sent',
+                  description: 'A new verification email has been sent to your inbox.',
+                });
+              } catch (error) {
+                toast({
+                  title: 'Error',
+                  description: error instanceof Error ? error.message : 'Failed to resend verification email',
+                  variant: 'destructive',
+                });
+              }
+            }}
+            className="w-full"
+          >
+            <MailIcon className="mr-2 h-4 w-4" />
+            Resend Verification Email
+          </Button>
+        </div>
+      )}
 
       {/* Submit Button */}
       <Button 
