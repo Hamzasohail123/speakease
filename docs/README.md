@@ -54,6 +54,7 @@ Setup guides and configuration:
 
 - **README.md** - This file (documentation index)
 - **ARCHITECTURE.md** - System architecture overview
+- **SCALABILITY_ANALYSIS.md** - Scalability analysis and recommendations for handling 100K+ users
 - **MODULES.md** - Module structure and organization
 - **PROJECT_STATUS.md** - Current project status
 - **IMPLEMENTATION_STATUS.md** - Implementation status tracking
