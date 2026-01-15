@@ -1,10 +1,14 @@
+'use client';
 import Link from 'next/link';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Sparkles, Mic, MessageSquare, TrendingUp, Target, Zap, CheckCircle, ArrowRight, Bot, Mail, Heart } from 'lucide-react';
+import { useAuth } from '@/hooks/use-auth';
+
 
 export default function Home() {
+  const { isAuthenticated } = useAuth();
   return (
     <div className="min-h-screen flex flex-col bg-gradient-to-br from-background via-background to-primary/5">
       {/* Navigation */}
@@ -21,7 +25,7 @@ export default function Home() {
             </Link>
             <div className="flex items-center gap-3">
               <Button asChild variant="ghost">
-                <Link href="/login">Login</Link>
+                <Link href="/login">{isAuthenticated ? "Dashboard" : "Login"}</Link>
               </Button>
               <Button asChild className="bg-gradient-to-r from-primary to-purple-500 hover:from-primary/90 hover:to-purple-500/90">
                 <Link href="/register">
