@@ -14,6 +14,10 @@ export default function LoginPage() {
   const { user, token } = useAuthStore();
   const isAuthenticated = !!user && !!token;
 
+  // listen for changes in the search params
+  // if the search params change, check if the user is authenticated
+  // if the user is authenticated, redirect to the dashboard
+  // if the user is not authenticated, stay on the login page
   useEffect(() => {
     if (isAuthenticated) {
       // Check for returnUrl, otherwise go to dashboard
