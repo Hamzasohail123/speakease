@@ -284,7 +284,7 @@ Each module follows this pattern:
 3. **Type Safety**: Shared types between frontend/backend
 4. **API Contracts**: OpenAPI/Swagger documentation (future)
 
-## Environment Variables
+## Environment Variabless
 
 ```env
 # Database
