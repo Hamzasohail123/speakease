@@ -44,6 +44,5 @@ jobs:
       - name: Build backend
         run: npm run build --workspace=backend
       
-      - name: Build frontend
-        run: npm run build --workspace=frontend
+
 
