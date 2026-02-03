@@ -37,10 +37,8 @@ export function CallWithAI({ sessionId }: CallWithAIProps) {
   const vadSilenceDurationRef = useRef<number>(500); // Silence duration in ms before considering speech ended
   const { toast } = useToast();
 
-  // Initialize audio context
+  // Initialize ring tone (AudioContext created lazily with correct sample rate)
   useEffect(() => {
-    audioContextRef.current = new AudioContext();
-    
     // Try to load ring tone, but handle if file doesn't exist
     ringToneRef.current = new Audio('/audio/ring-tone.mp3');
     ringToneRef.current.loop = true;
@@ -59,6 +57,12 @@ export function CallWithAI({ sessionId }: CallWithAIProps) {
       }
     };
   }, []);
+
+  const ensureAudioContext = () => {
+    if (!audioContextRef.current || audioContextRef.current.state === 'closed') {
+      audioContextRef.current = new AudioContext({ sampleRate: 24000 });
+    }
+  };
 
   // Call duration timer
   useEffect(() => {
@@ -89,6 +93,7 @@ export function CallWithAI({ sessionId }: CallWithAIProps) {
 
   // Generate simple beep sound (fallback for missing audio files)
   const playBeep = (frequency: number, duration: number) => {
+    ensureAudioContext();
     if (!audioContextRef.current) return;
     
     const oscillator = audioContextRef.current.createOscillator();
@@ -110,6 +115,7 @@ export function CallWithAI({ sessionId }: CallWithAIProps) {
   // Start call
   const startCall = async () => {
     try {
+      ensureAudioContext();
       setCallState('ringing');
 
       // Play ring tone or fallback beep
@@ -496,8 +502,9 @@ export function CallWithAI({ sessionId }: CallWithAIProps) {
       mediaStreamRef.current = stream;
 
       // Create audio context for processing
+      ensureAudioContext();
       if (!audioContextRef.current) {
-        audioContextRef.current = new AudioContext({ sampleRate: 24000 });
+        throw new Error('AudioContext not available');
       }
 
       const source = audioContextRef.current.createMediaStreamSource(stream);
@@ -571,7 +578,11 @@ export function CallWithAI({ sessionId }: CallWithAIProps) {
       };
 
       source.connect(processor);
-      processor.connect(audioContextRef.current.destination);
+      // Keep the processor alive without playing mic audio to speakers (prevents echo/feedback)
+      const silenceGain = audioContextRef.current.createGain();
+      silenceGain.gain.value = 0;
+      processor.connect(silenceGain);
+      silenceGain.connect(audioContextRef.current.destination);
     } catch (error) {
       console.error('Error starting audio capture:', error);
       toast({
@@ -782,4 +793,3 @@ export function CallWithAI({ sessionId }: CallWithAIProps) {
     </Card>
   );
 }
-
