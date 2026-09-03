@@ -125,8 +125,8 @@ export function setupRealtimeWebSocket(server: any) {
       logger.info(`[REALTIME] API Key present: ${!!env.OPENAI_API_KEY}, length: ${env.OPENAI_API_KEY?.length || 0}`);
 
       // Create Realtime API session
-      // Note: OpenAI Realtime API WebSocket endpoint
-      const openaiWsUrl = `wss://api.openai.com/v1/realtime?model=gpt-4o-realtime-preview-2024-12-17`;
+      // Note: OpenAI Realtime API WebSocket endpoint (using GA model, no beta header)
+      const openaiWsUrl = `wss://api.openai.com/v1/realtime?model=gpt-realtime-2.1`;
       logger.info(`[REALTIME] Connecting to OpenAI Realtime API: ${openaiWsUrl}`);
       
       let openaiWs: WebSocket;
@@ -138,15 +138,14 @@ export function setupRealtimeWebSocket(server: any) {
         logger.info(`[REALTIME] Creating WebSocket connection...`);
         console.log(`[REALTIME] URL: ${openaiWsUrl}`);
         logger.info(`[REALTIME] URL: ${openaiWsUrl}`);
-        console.log(`[REALTIME] Headers: Authorization=Bearer ***, OpenAI-Beta=realtime=v1`);
-        logger.info(`[REALTIME] Headers: Authorization=Bearer ***, OpenAI-Beta=realtime=v1`);
+        console.log(`[REALTIME] Headers: Authorization=Bearer ***`);
+        logger.info(`[REALTIME] Headers: Authorization=Bearer *** (GA interface - no beta header)`);
         
-        // Create WebSocket with proper options
+        // Create WebSocket with proper options (GA interface - no OpenAI-Beta header)
         console.log(`[REALTIME] About to create WebSocket object...`);
         openaiWs = new WebSocket(openaiWsUrl, {
           headers: {
             'Authorization': `Bearer ${env.OPENAI_API_KEY}`,
-            'OpenAI-Beta': 'realtime=v1',
             'User-Agent': 'AI-English-Speaker/1.0',
           },
           // Add perMessageDeflate for better compatibility
@@ -238,11 +237,12 @@ export function setupRealtimeWebSocket(server: any) {
             sessionCreated = true;
             logger.info('[REALTIME] Session created by OpenAI, now sending configuration...');
             
-            // Now send session configuration
-            // CRITICAL: Follow OpenAI Realtime API spec exactly
+            // Now send session configuration using GA format
+            // CRITICAL: Follow OpenAI Realtime API spec exactly for GA interface
             const config = {
               type: 'session.update',
               session: {
+                type: 'voice_agent', // Explicitly set session type for GA
                 modalities: ['text', 'audio'],
                 instructions: systemPrompt,
                 voice: 'alloy',
@@ -253,12 +253,12 @@ export function setupRealtimeWebSocket(server: any) {
                 },
                 turn_detection: {
                   type: 'server_vad',
-                  threshold: 0.3, // FIXED: Balanced threshold - OpenAI's VAD is good at filtering noise
+                  threshold: 0.3,
                   prefix_padding_ms: 300,
-                  silence_duration_ms: 500, // Wait 500ms after user stops speaking before responding
+                  silence_duration_ms: 500,
                 },
                 temperature: 0.7,
-                max_response_output_tokens: 4096, // Must be number, not string
+                max_response_output_tokens: 4096,
               },
             };
             
@@ -270,7 +270,7 @@ export function setupRealtimeWebSocket(server: any) {
             
             try {
               const configString = JSON.stringify(config);
-              logger.info('[REALTIME] Sending session.update configuration:');
+              logger.info('[REALTIME] Sending session.update configuration (GA format):');
               logger.info('[REALTIME] Config length:', configString.length);
               logger.info('[REALTIME] Instructions length:', systemPrompt.length);
               
