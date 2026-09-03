@@ -11,7 +11,7 @@ const lexend = Lexend({ subsets: ['latin'], variable: '--font-lexend' });
 
 // Set NEXT_PUBLIC_SITE_URL to the real production domain once deployed —
 // metadataBase resolves every relative OG/canonical URL below against it.
-const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || 'https://speakease.app';
+const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || 'https://speakease-frontend.vercel.app';
 
 const title = 'SpeakEase — AI English Speaking Practice';
 const description =

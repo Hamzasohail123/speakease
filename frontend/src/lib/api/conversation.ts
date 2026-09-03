@@ -24,7 +24,7 @@ export const conversationApi = {
     formData.append('sessionId', sessionId);
 
     const token = localStorage.getItem('auth_token');
-    const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001';
+    const API_URL = process.env.NEXT_PUBLIC_API_URL || 'https://speakease-backend.onrender.com';
 
     console.log('Sending to:', `${API_URL}/api/v1/conversation/voice`);
 
