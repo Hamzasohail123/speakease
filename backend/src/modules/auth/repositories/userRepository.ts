@@ -12,6 +12,7 @@ export interface UserWithPassword {
   email: string;
   name: string;
   passwordHash: string;
+  emailVerified: boolean;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -19,17 +20,23 @@ export interface UserWithPassword {
 /**
  * Create a new user
  */
-export async function createUser(data: CreateUserData): Promise<User> {
+export async function createUser(data: CreateUserData & {
+  emailVerificationToken?: string;
+  emailVerificationTokenExpiry?: Date;
+}): Promise<User> {
   const user = await prisma.user.create({
     data: {
       email: data.email,
       name: data.name,
       passwordHash: data.passwordHash,
+      emailVerificationToken: data.emailVerificationToken,
+      emailVerificationTokenExpiry: data.emailVerificationTokenExpiry,
     },
     select: {
       id: true,
       email: true,
       name: true,
+      emailVerified: true,
       createdAt: true,
       updatedAt: true,
     },
@@ -49,6 +56,7 @@ export async function findUserByEmail(email: string): Promise<UserWithPassword |
       email: true,
       name: true,
       passwordHash: true,
+      emailVerified: true,
       createdAt: true,
       updatedAt: true,
     },
@@ -67,6 +75,29 @@ export async function findUserById(id: string): Promise<User | null> {
       id: true,
       email: true,
       name: true,
+      emailVerified: true,
+      emailVerificationToken: true,
+      emailVerificationTokenExpiry: true,
+      createdAt: true,
+      updatedAt: true,
+    },
+  });
+
+  return user;
+}
+
+/**
+ * Find user by ID with password (for authentication)
+ */
+export async function findUserByIdWithPassword(id: string): Promise<UserWithPassword | null> {
+  const user = await prisma.user.findUnique({
+    where: { id },
+    select: {
+      id: true,
+      email: true,
+      name: true,
+      passwordHash: true,
+      emailVerified: true,
       createdAt: true,
       updatedAt: true,
     },
@@ -85,5 +116,55 @@ export async function emailExists(email: string): Promise<boolean> {
   });
 
   return user !== null;
+}
+
+/**
+ * Find user by verification token
+ */
+export async function findUserByVerificationToken(token: string): Promise<User | null> {
+  const user = await prisma.user.findFirst({
+    where: {
+      emailVerificationToken: token,
+    },
+    select: {
+      id: true,
+      email: true,
+      name: true,
+      emailVerified: true,
+      emailVerificationToken: true,
+      emailVerificationTokenExpiry: true,
+      createdAt: true,
+      updatedAt: true,
+    },
+  });
+
+  return user;
+}
+
+/**
+ * Update user
+ */
+export async function updateUser(
+  id: string,
+  data: {
+    emailVerified?: boolean;
+    emailVerificationToken?: string | null;
+    emailVerificationTokenExpiry?: Date | null;
+  }
+): Promise<User> {
+  const user = await prisma.user.update({
+    where: { id },
+    data,
+    select: {
+      id: true,
+      email: true,
+      name: true,
+      emailVerified: true,
+      createdAt: true,
+      updatedAt: true,
+    },
+  });
+
+  return user;
 }
 

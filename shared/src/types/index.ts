@@ -3,6 +3,9 @@ export interface User {
   id: string;
   email: string;
   name: string;
+  emailVerified?: boolean;
+  emailVerificationToken?: string | null;
+  emailVerificationTokenExpiry?: Date | null;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -126,7 +129,7 @@ export interface RegisterRequest {
 
 export interface AuthResponse {
   user: User;
-  token: string;
+  token?: string;
   refreshToken?: string;
 }
 

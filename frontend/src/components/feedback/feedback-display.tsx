@@ -3,19 +3,67 @@
 import { Feedback } from '@ai-english-speaker/shared';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { CheckCircle2, XCircle, Lightbulb, AlertTriangle, TrendingUp, Sparkles } from 'lucide-react';
+import { CheckCircle2, XCircle, Lightbulb, AlertTriangle, TrendingUp, Sparkles, Loader2 } from 'lucide-react';
+import { TranscriptDisplay } from '@/components/conversation/transcript-display';
+import { useQuery } from '@tanstack/react-query';
+import { sessionsApi } from '@/lib/api';
 
 interface FeedbackDisplayProps {
   feedback: Feedback;
+  sessionId: string;
 }
 
-export function FeedbackDisplay({ feedback }: FeedbackDisplayProps) {
+export function FeedbackDisplay({ feedback, sessionId }: FeedbackDisplayProps) {
   const hasMistakes = feedback.mistakes && feedback.mistakes.length > 0;
   const hasImprovements = feedback.improvements && feedback.improvements.length > 0;
   const hasTips = feedback.tips && feedback.tips.length > 0;
 
+  // Fetch transcript for this session
+  const { data: messages, isLoading: messagesLoading, error: messagesError } = useQuery({
+    queryKey: ['conversation', sessionId, 'messages'],
+    queryFn: () => sessionsApi.getTranscript(sessionId),
+    enabled: !!sessionId,
+  });
+
+  // Debug logging
+  if (messagesError) {
+    console.error('[FeedbackDisplay] Error fetching transcript:', messagesError);
+  }
+  if (messages) {
+    console.log('[FeedbackDisplay] Messages received:', messages.length, messages);
+  }
+
   return (
     <div className="space-y-6">
+      {/* Conversation Transcript Section */}
+      {messagesLoading ? (
+        <Card className="border-2">
+          <CardContent className="py-12 text-center space-y-4">
+            <Loader2 className="h-8 w-8 animate-spin mx-auto text-primary" />
+            <p className="text-muted-foreground">Loading conversation transcript...</p>
+          </CardContent>
+        </Card>
+      ) : messages && messages.length > 0 ? (
+        <TranscriptDisplay
+          messages={messages}
+          title="Real-Time Call Transcript"
+          description={`Complete record of your real-time call with AI (${messages.filter(m => m.role === 'USER').length} from you, ${messages.filter(m => m.role === 'ASSISTANT').length} from AI)`}
+          maxHeight="500px"
+        />
+      ) : messagesError ? (
+        <Card className="border-2 border-red-200">
+          <CardContent className="py-8 text-center">
+            <p className="text-sm text-red-600">Error loading transcript: {messagesError instanceof Error ? messagesError.message : 'Unknown error'}</p>
+          </CardContent>
+        </Card>
+      ) : (
+        <Card className="border-2 border-dashed">
+          <CardContent className="py-8 text-center">
+            <p className="text-sm text-muted-foreground">No transcript available for this session</p>
+            <p className="text-xs text-muted-foreground mt-2">Messages will appear here after your call ends</p>
+          </CardContent>
+        </Card>
+      )}
       {/* Header Card */}
       <Card className="border-2 bg-gradient-to-br from-primary/5 to-purple-500/5">
         <CardHeader>

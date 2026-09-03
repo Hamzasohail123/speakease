@@ -36,6 +36,10 @@ const config: Config = {
   				DEFAULT: 'hsl(var(--accent))',
   				foreground: 'hsl(var(--accent-foreground))'
   			},
+  			'accent-warm': {
+  				DEFAULT: 'hsl(var(--accent-warm))',
+  				foreground: 'hsl(var(--accent-warm-foreground))'
+  			},
   			destructive: {
   				DEFAULT: 'hsl(var(--destructive))',
   				foreground: 'hsl(var(--destructive-foreground))'
@@ -55,6 +59,10 @@ const config: Config = {
   			lg: 'var(--radius)',
   			md: 'calc(var(--radius) - 2px)',
   			sm: 'calc(var(--radius) - 4px)'
+  		},
+  		fontFamily: {
+  			sans: ['var(--font-inter)', 'ui-sans-serif', 'system-ui', 'sans-serif'],
+  			display: ['var(--font-lexend)', 'var(--font-inter)', 'ui-sans-serif', 'sans-serif']
   		}
   	}
   },

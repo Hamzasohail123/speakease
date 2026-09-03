@@ -5,9 +5,11 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { PasswordInput } from '@/components/ui/password-input';
 import { Label } from '@/components/ui/label';
 import { useAuth } from '@/hooks/use-auth';
 import { useToast } from '@/hooks/use-toast';
+import { authApi } from '@/lib/api';
 import { isValidEmail, isValidPassword } from '@ai-english-speaker/shared';
 import { User, Mail, Lock, Loader2, Sparkles, CheckCircle2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
@@ -25,6 +27,10 @@ const registerSchema = z.object({
       message:
         'Password must contain at least one uppercase letter, one lowercase letter, and one number',
     }),
+  confirmPassword: z.string().min(1, 'Please confirm your password'),
+}).refine((data) => data.password === data.confirmPassword, {
+  message: "Passwords don't match",
+  path: ['confirmPassword'],
 });
 
 type RegisterFormData = z.infer<typeof registerSchema>;
@@ -33,6 +39,8 @@ export function RegisterForm() {
   const { register: registerUser, isRegistering } = useAuth();
   const { toast } = useToast();
   const [password, setPassword] = useState('');
+  const [registrationSuccess, setRegistrationSuccess] = useState(false);
+  const [registeredEmail, setRegisteredEmail] = useState<string>('');
 
   const {
     register,
@@ -44,10 +52,34 @@ export function RegisterForm() {
 
   const onSubmit = async (data: RegisterFormData) => {
     try {
-      await registerUser(data);
-      toast({
-        title: 'Success',
-        description: 'Account created successfully',
+      // Remove confirmPassword before sending to API
+      const { confirmPassword, ...registrationData } = data;
+      await registerUser(registrationData, {
+        onSuccess: (response) => {
+          // Check if registration returned tokens (legacy) or just user (new flow)
+          if (!response.token) {
+            // New flow - email verification required
+            setRegistrationSuccess(true);
+            setRegisteredEmail(data.email);
+            toast({
+              title: 'Account Created',
+              description: 'Please check your email to verify your account before logging in.',
+            });
+          } else {
+            // Legacy flow - auto login
+            toast({
+              title: 'Success',
+              description: 'Account created successfully',
+            });
+          }
+        },
+        onError: (error) => {
+          toast({
+            title: 'Error',
+            description: error instanceof Error ? error.message : 'Registration failed',
+            variant: 'destructive',
+          });
+        },
       });
     } catch (error) {
       toast({
@@ -63,6 +95,66 @@ export function RegisterForm() {
   const hasUpperCase = /[A-Z]/.test(password);
   const hasLowerCase = /[a-z]/.test(password);
   const hasNumber = /[0-9]/.test(password);
+
+  const handleResendVerification = async () => {
+    if (!registeredEmail) return;
+    try {
+      await authApi.resendVerification(registeredEmail);
+      toast({
+        title: 'Verification Email Sent',
+        description: 'A new verification email has been sent to your inbox.',
+      });
+    } catch (error) {
+      toast({
+        title: 'Error',
+        description: error instanceof Error ? error.message : 'Failed to resend verification email',
+        variant: 'destructive',
+      });
+    }
+  };
+
+  if (registrationSuccess) {
+    return (
+      <div className="space-y-5">
+        <div className="text-center space-y-4 py-6">
+          <div className="h-16 w-16 rounded-full bg-blue-500/10 flex items-center justify-center mx-auto">
+            <Mail className="h-8 w-8 text-blue-500" />
+          </div>
+          <div>
+            <h3 className="text-lg font-semibold">Check Your Email</h3>
+            <p className="text-sm text-muted-foreground mt-2">
+              We've sent a verification email to <strong>{registeredEmail}</strong>
+            </p>
+            <p className="text-sm text-muted-foreground mt-1">
+              Please click the link in the email to verify your account before logging in.
+            </p>
+          </div>
+          <div className="space-y-2 pt-4">
+            <Button
+              type="button"
+              variant="outline"
+              onClick={handleResendVerification}
+              className="w-full"
+            >
+              <Mail className="mr-2 h-4 w-4" />
+              Resend Verification Email
+            </Button>
+            <Button
+              type="button"
+              variant="ghost"
+              onClick={() => {
+                setRegistrationSuccess(false);
+                setRegisteredEmail('');
+              }}
+              className="w-full"
+            >
+              Back to Registration
+            </Button>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <form onSubmit={handleSubmit(onSubmit)} className="space-y-5">
@@ -139,12 +231,11 @@ export function RegisterForm() {
           Password
         </Label>
         <div className="relative group">
-          <Input
+          <PasswordInput
             id="password"
-            type="password"
             placeholder="••••••••"
             className={cn(
-              "h-11 pl-4 pr-4 text-base transition-all duration-200",
+              "h-11 pl-4 pr-10 text-base transition-all duration-200",
               "border-2 focus:border-blue-500 dark:focus:border-blue-400",
               "bg-white dark:bg-gray-950",
               "group-hover:border-blue-300 dark:group-hover:border-blue-700",
@@ -198,6 +289,37 @@ export function RegisterForm() {
             </div>
           </div>
         )}
+      </div>
+
+      {/* Confirm Password Field */}
+      <div className="space-y-2">
+        <Label 
+          htmlFor="confirmPassword" 
+          className="text-sm font-medium text-foreground flex items-center gap-2"
+        >
+          <Lock className="w-4 h-4 text-blue-600 dark:text-blue-400" />
+          Confirm Password
+        </Label>
+        <div className="relative group">
+          <PasswordInput
+            id="confirmPassword"
+            placeholder="••••••••"
+            className={cn(
+              "h-11 pl-4 pr-10 text-base transition-all duration-200",
+              "border-2 focus:border-blue-500 dark:focus:border-blue-400",
+              "bg-white dark:bg-gray-950",
+              "group-hover:border-blue-300 dark:group-hover:border-blue-700",
+              errors.confirmPassword && "border-red-500 focus:border-red-500"
+            )}
+            {...register('confirmPassword')}
+          />
+          {errors.confirmPassword && (
+            <div className="flex items-center gap-1.5 mt-2 text-sm text-red-600 dark:text-red-400 animate-in slide-in-from-top-1">
+              <span className="inline-block w-1 h-1 rounded-full bg-red-600 dark:bg-red-400" />
+              {errors.confirmPassword.message}
+            </div>
+          )}
+        </div>
       </div>
 
       {/* Submit Button */}

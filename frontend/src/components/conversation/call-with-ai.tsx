@@ -28,12 +28,17 @@ export function CallWithAI({ sessionId }: CallWithAIProps) {
   const callTimerRef = useRef<NodeJS.Timeout | null>(null);
   const durationTimerRef = useRef<NodeJS.Timeout | null>(null);
   const nextAudioTimeRef = useRef<number>(0); // Track when next audio chunk should play
+  const activeAudioSourcesRef = useRef<Set<AudioBufferSourceNode>>(new Set()); // Track active audio sources to prevent overlap
+  const sessionReadyRef = useRef<boolean>(false); // Track if OpenAI session is ready
+  const vadStateRef = useRef<'silence' | 'speaking' | 'listening'>('silence'); // Client-side VAD state
+  const vadSilenceStartRef = useRef<number>(0); // When silence started
+  const vadNoiseFloorRef = useRef<number>(0.01); // Noise floor threshold (1% of max amplitude)
+  const vadSpeechThresholdRef = useRef<number>(0.05); // Speech threshold (5% of max amplitude)
+  const vadSilenceDurationRef = useRef<number>(500); // Silence duration in ms before considering speech ended
   const { toast } = useToast();
 
-  // Initialize audio context
+  // Initialize ring tone (AudioContext created lazily with correct sample rate)
   useEffect(() => {
-    audioContextRef.current = new AudioContext();
-    
     // Try to load ring tone, but handle if file doesn't exist
     ringToneRef.current = new Audio('/audio/ring-tone.mp3');
     ringToneRef.current.loop = true;
@@ -52,6 +57,12 @@ export function CallWithAI({ sessionId }: CallWithAIProps) {
       }
     };
   }, []);
+
+  const ensureAudioContext = () => {
+    if (!audioContextRef.current || audioContextRef.current.state === 'closed') {
+      audioContextRef.current = new AudioContext({ sampleRate: 24000 });
+    }
+  };
 
   // Call duration timer
   useEffect(() => {
@@ -82,6 +93,7 @@ export function CallWithAI({ sessionId }: CallWithAIProps) {
 
   // Generate simple beep sound (fallback for missing audio files)
   const playBeep = (frequency: number, duration: number) => {
+    ensureAudioContext();
     if (!audioContextRef.current) return;
     
     const oscillator = audioContextRef.current.createOscillator();
@@ -103,6 +115,7 @@ export function CallWithAI({ sessionId }: CallWithAIProps) {
   // Start call
   const startCall = async () => {
     try {
+      ensureAudioContext();
       setCallState('ringing');
 
       // Play ring tone or fallback beep
@@ -168,19 +181,13 @@ export function CallWithAI({ sessionId }: CallWithAIProps) {
             
             handleRealtimeMessage(data);
           } else if (event.data instanceof ArrayBuffer || event.data instanceof Blob) {
-            // Binary audio data from OpenAI
+            // FIXED: OpenAI Realtime API sends audio as JSON (base64 in response.audio.delta)
+            // Binary messages are rare - log but don't process as audio
             const size = event.data instanceof ArrayBuffer 
               ? event.data.byteLength 
               : event.data.size;
-            console.debug('Received binary audio data:', size, 'bytes');
-            // Convert to ArrayBuffer if Blob
-            const arrayBuffer = event.data instanceof Blob 
-              ? await event.data.arrayBuffer() 
-              : event.data;
-            // Play the audio chunk
-            if (audioContextRef.current) {
-              await playAudioChunk(arrayBuffer);
-            }
+            console.warn('[FRONTEND] Received unexpected binary data:', size, 'bytes');
+            // Don't play binary data - audio comes in JSON messages as base64
           } else {
             console.warn('Received unknown data type:', typeof event.data, event.data);
           }
@@ -244,9 +251,12 @@ export function CallWithAI({ sessionId }: CallWithAIProps) {
             if (data.delta && audioContextRef.current) {
               // CRITICAL: Pass base64 string directly - playAudioChunk will handle conversion
               // This avoids ArrayBuffer detachment issues
+              // FIXED: Don't await - let it queue in background
               playAudioChunk(data.delta).catch((error) => {
                 console.error('[FRONTEND] ❌ Error playing audio:', error);
               });
+            } else {
+              console.warn('[FRONTEND] ⚠️ response.audio.delta received but no delta data or AudioContext');
             }
             break;
 
@@ -262,13 +272,29 @@ export function CallWithAI({ sessionId }: CallWithAIProps) {
             break;
 
           case 'response.created':
-            // AI started responding
+            // AI started responding - reset audio queue for new response
+            console.log('[FRONTEND] 🤖 AI started responding - resetting audio queue');
             setIsAISpeaking(true);
             setIsUserSpeaking(false);
+            // FIXED: Reset audio queue when new response starts
+            if (audioContextRef.current) {
+              // Stop any currently playing audio sources
+              activeAudioSourcesRef.current.forEach((source) => {
+                try {
+                  source.stop();
+                } catch (e) {
+                  // Source might already be stopped
+                }
+              });
+              activeAudioSourcesRef.current.clear();
+              // Reset queue time to current time
+              nextAudioTimeRef.current = audioContextRef.current.currentTime;
+            }
             break;
 
           case 'response.done':
             // AI finished responding
+            console.log('[FRONTEND] 🤖 AI finished responding');
             setIsAISpeaking(false);
             break;
 
@@ -276,7 +302,8 @@ export function CallWithAI({ sessionId }: CallWithAIProps) {
             // AI finished speaking - reset audio queue
             console.log('[FRONTEND] 🎵 AI finished speaking, resetting audio queue');
             if (audioContextRef.current) {
-              nextAudioTimeRef.current = audioContextRef.current.currentTime;
+              // Don't reset time here - let remaining chunks finish
+              // nextAudioTimeRef.current = audioContextRef.current.currentTime;
             }
             setIsAISpeaking(false);
             break;
@@ -294,6 +321,20 @@ export function CallWithAI({ sessionId }: CallWithAIProps) {
             console.log('[FRONTEND] 👤 User stopped speaking, waiting for AI response...');
             break;
 
+          case 'conversation.item.input_audio_transcription.completed':
+            // OpenAI transcribed what user said
+            if (data.transcript) {
+              console.log('[FRONTEND] 📝 OpenAI transcribed: "' + data.transcript + '"');
+            }
+            break;
+
+          case 'input_audio_buffer.committed':
+            // Audio buffer committed - user's speech was processed
+            if (data.input_audio_buffer?.transcript) {
+              console.log('[FRONTEND] ✅ User said: "' + data.input_audio_buffer.transcript + '"');
+            }
+            break;
+
           case 'session.created':
             console.log('Session created:', data);
             break;
@@ -303,9 +344,13 @@ export function CallWithAI({ sessionId }: CallWithAIProps) {
             break;
 
           case 'connection.ready':
-            // Backend proxy sent connection ready message
-            console.log('Connection ready:', data.message);
-            // Don't change state here, wait for OpenAI session to be ready
+            // Backend proxy sent connection ready message - OpenAI session is ready
+            console.log('[FRONTEND] ✅ Connection ready:', data.message);
+            sessionReadyRef.current = true;
+            // Start audio capture if not already started
+            if (callState === 'in-call' && !mediaStreamRef.current) {
+              startAudioCapture();
+            }
             break;
 
           case 'error':
@@ -405,13 +450,31 @@ export function CallWithAI({ sessionId }: CallWithAIProps) {
       source.buffer = audioBuffer;
       source.connect(audioContextRef.current.destination);
       
-      // Schedule audio to play sequentially (queue chunks)
+      // FIXED: Schedule audio to play sequentially (queue chunks)
       const currentTime = audioContextRef.current.currentTime;
       const startTime = Math.max(currentTime, nextAudioTimeRef.current);
+      
+      // Track this source so we can stop it if needed
+      activeAudioSourcesRef.current.add(source);
+      
+      // Remove from set when finished
+      source.onended = () => {
+        activeAudioSourcesRef.current.delete(source);
+        console.log(`[FRONTEND] Audio chunk finished, ${activeAudioSourcesRef.current.size} sources remaining`);
+      };
+      
+      // Log if there are multiple sources playing (indicates overlap issue)
+      if (activeAudioSourcesRef.current.size > 1) {
+        console.warn(`[FRONTEND] ⚠️ Multiple audio sources playing (${activeAudioSourcesRef.current.size}) - possible overlap!`);
+      }
+      
       source.start(startTime);
       
-      // Update next play time for sequential playback
-      nextAudioTimeRef.current = startTime + audioBuffer.duration;
+      // Update next play time for sequential playback (add small gap to prevent overlap)
+      const gap = 0.01; // 10ms gap between chunks to prevent overlap
+      nextAudioTimeRef.current = startTime + audioBuffer.duration + gap;
+      
+      console.log(`[FRONTEND] 🔊 Queued audio chunk: start=${startTime.toFixed(3)}s, duration=${audioBuffer.duration.toFixed(3)}s, next=${nextAudioTimeRef.current.toFixed(3)}s`);
       
       setIsAISpeaking(true);
     } catch (error) {
@@ -423,48 +486,103 @@ export function CallWithAI({ sessionId }: CallWithAIProps) {
   // Start audio capture
   const startAudioCapture = async () => {
     try {
+      // FIXED: Enhanced noise suppression and filtering
       const stream = await navigator.mediaDevices.getUserMedia({ 
         audio: {
           channelCount: 1,
           sampleRate: 24000, // OpenAI Realtime API uses 24kHz
           echoCancellation: true,
-          noiseSuppression: true,
+          noiseSuppression: true, // Aggressive noise suppression
           autoGainControl: true, // Improve audio quality
+          // Note: Browser-specific constraints (goog*) are applied automatically by Chrome
           // Don't constrain sampleRate in getUserMedia - let browser use native rate
           // The AudioContext will resample to 24kHz
-        }
+        } as MediaTrackConstraints
       });
       mediaStreamRef.current = stream;
 
       // Create audio context for processing
+      ensureAudioContext();
       if (!audioContextRef.current) {
-        audioContextRef.current = new AudioContext({ sampleRate: 24000 });
+        throw new Error('AudioContext not available');
       }
 
       const source = audioContextRef.current.createMediaStreamSource(stream);
-      const processor = audioContextRef.current.createScriptProcessor(4096, 1, 1);
+      const processor = audioContextRef.current.createScriptProcessor(8192, 1, 1); // Larger buffer for better VAD
       
       processor.onaudioprocess = (e) => {
-        if (!isMuted && wsRef.current?.readyState === WebSocket.OPEN) {
+        if (!isMuted && wsRef.current?.readyState === WebSocket.OPEN && sessionReadyRef.current) {
           const inputData = e.inputBuffer.getChannelData(0);
           
-          // Convert to PCM16
-          const pcm16 = new Int16Array(inputData.length);
+          // FIXED: Let OpenAI's server-side VAD handle speech detection
+          // Client-side VAD is only for UI feedback, not blocking audio
+          // Calculate RMS for visual feedback only
+          let sumSquares = 0;
+          let maxAmplitude = 0;
           for (let i = 0; i < inputData.length; i++) {
-            // Clamp to [-1, 1] and convert to Int16
-            const sample = Math.max(-1, Math.min(1, inputData[i]));
-            pcm16[i] = sample < 0 ? sample * 0x8000 : sample * 0x7FFF;
+            const abs = Math.abs(inputData[i]);
+            sumSquares += inputData[i] * inputData[i];
+            maxAmplitude = Math.max(maxAmplitude, abs);
+          }
+          const rms = Math.sqrt(sumSquares / inputData.length);
+          const amplitude = maxAmplitude;
+          
+          // Update noise floor for UI feedback only
+          if (amplitude < vadNoiseFloorRef.current * 2) {
+            vadNoiseFloorRef.current = vadNoiseFloorRef.current * 0.99 + amplitude * 0.01;
           }
           
-          // OpenAI Realtime API expects binary PCM16 data
-          // Send the binary PCM16 data directly
-          // OpenAI's server-side VAD will handle speech detection
-          wsRef.current.send(pcm16.buffer);
+          // Client-side VAD for UI feedback (not blocking)
+          const now = Date.now();
+          const isSpeech = amplitude > vadSpeechThresholdRef.current * 0.3 || rms > vadSpeechThresholdRef.current * 0.2; // Lower threshold for UI
+          
+          if (isSpeech) {
+            if (vadStateRef.current === 'silence') {
+              console.log('[FRONTEND] 🎤 Speech detected (UI feedback)');
+              vadStateRef.current = 'speaking';
+            }
+            vadSilenceStartRef.current = 0;
+          } else {
+            if (vadStateRef.current === 'speaking') {
+              if (vadSilenceStartRef.current === 0) {
+                vadSilenceStartRef.current = now;
+                vadStateRef.current = 'listening';
+              } else {
+                const silenceDuration = now - vadSilenceStartRef.current;
+                if (silenceDuration >= vadSilenceDurationRef.current) {
+                  vadStateRef.current = 'silence';
+                  vadSilenceStartRef.current = 0;
+                }
+              }
+            } else {
+              vadStateRef.current = 'silence';
+            }
+          }
+          
+          // CRITICAL: Always send audio to OpenAI - let server-side VAD handle filtering
+          // OpenAI's VAD is much better at distinguishing speech from noise
+          const GAIN = 2.5; // Moderate gain to boost speech without distortion
+          const pcm16 = new Int16Array(inputData.length);
+          for (let i = 0; i < inputData.length; i++) {
+            const amplified = Math.max(-1, Math.min(1, inputData[i] * GAIN));
+            pcm16[i] = Math.round(amplified * 32767);
+          }
+          
+          // Send ALL audio to OpenAI - server-side VAD will filter
+          try {
+            wsRef.current.send(pcm16.buffer);
+          } catch (error) {
+            console.error('[FRONTEND] Error sending audio:', error);
+          }
         }
       };
 
       source.connect(processor);
-      processor.connect(audioContextRef.current.destination);
+      // Keep the processor alive without playing mic audio to speakers (prevents echo/feedback)
+      const silenceGain = audioContextRef.current.createGain();
+      silenceGain.gain.value = 0;
+      processor.connect(silenceGain);
+      silenceGain.connect(audioContextRef.current.destination);
     } catch (error) {
       console.error('Error starting audio capture:', error);
       toast({
@@ -498,6 +616,21 @@ export function CallWithAI({ sessionId }: CallWithAIProps) {
       mediaStreamRef.current.getTracks().forEach((track) => track.stop());
       mediaStreamRef.current = null;
     }
+    
+    // FIXED: Stop all active audio sources
+    activeAudioSourcesRef.current.forEach((source) => {
+      try {
+        source.stop();
+      } catch (e) {
+        // Source might already be stopped
+      }
+    });
+    activeAudioSourcesRef.current.clear();
+    
+    // Reset VAD state
+    vadStateRef.current = 'silence';
+    vadSilenceStartRef.current = 0;
+    sessionReadyRef.current = false;
 
     // Reset state
     setCallState('ended');
@@ -660,4 +793,3 @@ export function CallWithAI({ sessionId }: CallWithAIProps) {
     </Card>
   );
 }
-

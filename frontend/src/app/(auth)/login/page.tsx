@@ -1,9 +1,35 @@
+'use client';
+
+import { useEffect } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { LoginForm } from '@/components/forms/login-form';
 import { Sparkles, MessageSquare } from 'lucide-react';
+import { useAuthStore } from '@/stores/auth-store';
 
 export default function LoginPage() {
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const { user, token } = useAuthStore();
+  const isAuthenticated = !!user && !!token;
+
+  // listen for changes in the search params
+  // if the search params change, check if the user is authenticated
+  // if the user is authenticated, redirect to the dashboard
+  // if the user is not authenticated, stay on the login page
+  useEffect(() => {
+    if (isAuthenticated) {
+      // Check for returnUrl, otherwise go to dashboard
+      const returnUrl = searchParams.get('returnUrl');
+      const redirectTo = returnUrl || '/dashboard';
+      router.push(redirectTo);
+    }
+  }, [isAuthenticated, router, searchParams]);
+
+  if (isAuthenticated) {
+    return null;
+  }
   return (
     <div className="min-h-screen flex items-center justify-center p-4 relative overflow-hidden">
       {/* Animated Background */}

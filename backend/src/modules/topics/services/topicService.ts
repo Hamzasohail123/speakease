@@ -8,12 +8,26 @@ import {
   getTopicsByCategories,
 } from '../repositories/topicRepository';
 import { AppError } from '../../../middleware/errorHandler';
+import { cacheGet, cacheSet } from '../../../config/redis';
+
+const ALL_TOPICS_CACHE_KEY = 'cache:topics:all';
+const DAILY_TOPIC_CACHE_KEY = 'cache:topics:daily';
+const ALL_TOPICS_TTL_SECONDS = 60 * 60; // topics change rarely
+const DAILY_TOPIC_TTL_SECONDS = 60 * 60 * 24;
 
 /**
- * Get all topics
+ * Get all topics — cached, since this is fetched on every session start and
+ * topics change on the order of days/weeks, not per-request. Cache reads/writes
+ * fail open (see config/redis.ts), so a Redis outage falls back to the database
+ * instead of breaking this endpoint.
  */
 export async function getAllTopicsService(): Promise<Topic[]> {
-  return await getAllTopics();
+  const cached = await cacheGet<Topic[]>(ALL_TOPICS_CACHE_KEY);
+  if (cached) return cached;
+
+  const topics = await getAllTopics();
+  await cacheSet(ALL_TOPICS_CACHE_KEY, topics, ALL_TOPICS_TTL_SECONDS);
+  return topics;
 }
 
 /**
@@ -37,9 +51,13 @@ export async function getTopicsByCategoryService(
 }
 
 /**
- * Get daily topic
+ * Get daily topic — cached for a day; the random-topic fallback (when no daily
+ * topic is configured) intentionally isn't cached, so it still varies per call.
  */
 export async function getDailyTopicService(): Promise<Topic> {
+  const cached = await cacheGet<Topic>(DAILY_TOPIC_CACHE_KEY);
+  if (cached) return cached;
+
   const topic = await getDailyTopic();
   if (!topic) {
     // If no daily topic exists, return a random topic instead
@@ -49,6 +67,8 @@ export async function getDailyTopicService(): Promise<Topic> {
     }
     return randomTopic;
   }
+
+  await cacheSet(DAILY_TOPIC_CACHE_KEY, topic, DAILY_TOPIC_TTL_SECONDS);
   return topic;
 }
 

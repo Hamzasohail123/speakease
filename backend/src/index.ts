@@ -6,6 +6,7 @@ import { createServer } from 'http';
 
 import { errorHandler } from './middleware/errorHandler';
 import { notFoundHandler } from './middleware/notFoundHandler';
+import { apiLimiter } from './middleware/rateLimiter';
 import { logger } from './utils/logger';
 import { verifyDatabaseSetup } from './utils/database';
 import authRoutes from './modules/auth/routes';
@@ -15,10 +16,20 @@ import topicRoutes from './modules/topics/routes';
 import conversationRoutes from './modules/conversation/routes';
 import feedbackRoutes from './modules/feedback/routes';
 import adminRoutes from './modules/admin/routes';
+import billingRoutes from './modules/billing/routes';
+import { handlePaddleWebhook } from './modules/billing/controllers/billingController';
 import { setupRealtimeWebSocket } from './modules/conversation/realtime/websocketProxy';
 
 // Load environment variables
 dotenv.config();
+
+// A rejected promise nobody awaited (e.g. a Redis command failing after retries
+// are exhausted) crashes the whole process by default on this Node version.
+// Redis is a cache/rate-limit dependency, not a critical one — log it loudly and
+// keep serving requests rather than taking the entire API down over it.
+process.on('unhandledRejection', (reason) => {
+  logger.error('Unhandled promise rejection', reason);
+});
 
 const app = express();
 const PORT = parseInt(process.env.PORT || '3001', 10);
@@ -27,8 +38,18 @@ const FRONTEND_URL = process.env.FRONTEND_URL || 'http://localhost:3000';
 
 // Middleware
 app.use(cors({ origin: FRONTEND_URL, credentials: true }));
+
+// Paddle webhook needs the raw request body for signature verification, so it's
+// registered before express.json() below — once that runs, the raw bytes are gone.
+app.post(
+  '/api/v1/billing/webhooks/paddle',
+  express.raw({ type: 'application/json' }),
+  handlePaddleWebhook
+);
+
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
+app.use('/api/v1', apiLimiter);
 
 // Root endpoint - API information
 app.get('/', (req, res) => {
@@ -92,6 +113,7 @@ app.use('/api/v1/topics', topicRoutes);
 app.use('/api/v1/conversation', conversationRoutes);
 app.use('/api/v1/feedback', feedbackRoutes);
 app.use('/api/v1/admin', adminRoutes);
+app.use('/api/v1/billing', billingRoutes);
 // app.use('/api/v1/memory', memoryRoutes);
 
 // Error handling middleware (must be last)

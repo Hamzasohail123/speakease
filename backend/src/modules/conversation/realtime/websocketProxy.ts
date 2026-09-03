@@ -239,27 +239,34 @@ export function setupRealtimeWebSocket(server: any) {
             logger.info('[REALTIME] Session created by OpenAI, now sending configuration...');
             
             // Now send session configuration
+            // CRITICAL: Follow OpenAI Realtime API spec exactly
             const config = {
               type: 'session.update',
               session: {
-                modalities: ['text', 'audio'], // Order: text first, then audio
+                modalities: ['text', 'audio'],
                 instructions: systemPrompt,
-                voice: 'alloy', // Valid voices: 'alloy', 'ash', 'ballad', 'coral', 'echo', 'sage', 'shimmer', 'verse', 'marin', 'cedar'
-                input_audio_format: 'pcm16', // MUST match: 16-bit Linear PCM, 24000Hz, mono, little-endian
-                output_audio_format: 'pcm16', // MUST match: 16-bit Linear PCM, 24000Hz, mono, little-endian
+                voice: 'alloy',
+                input_audio_format: 'pcm16',
+                output_audio_format: 'pcm16',
                 input_audio_transcription: {
                   model: 'whisper-1',
                 },
                 turn_detection: {
                   type: 'server_vad',
-                  threshold: 0.3, // Lower threshold = more sensitive (was 0.5, now 0.3)
+                  threshold: 0.3, // FIXED: Balanced threshold - OpenAI's VAD is good at filtering noise
                   prefix_padding_ms: 300,
-                  silence_duration_ms: 500, // Wait 500ms after user stops speaking before AI responds
+                  silence_duration_ms: 500, // Wait 500ms after user stops speaking before responding
                 },
                 temperature: 0.7,
-                max_response_output_tokens: 4096,
+                max_response_output_tokens: 4096, // Must be number, not string
               },
             };
+            
+            // Validate config before sending
+            if (typeof config.session.max_response_output_tokens !== 'number') {
+              logger.error('[REALTIME] ❌ CRITICAL: max_response_output_tokens is not a number!', config.session.max_response_output_tokens);
+              throw new Error('Invalid max_response_output_tokens type');
+            }
             
             try {
               const configString = JSON.stringify(config);
@@ -297,9 +304,20 @@ export function setupRealtimeWebSocket(server: any) {
             }, 500); // 500ms delay to ensure OpenAI is fully ready
           }
           
-          // Handle error messages
+          // Handle error messages - CRITICAL for debugging
           if (message.type === 'error') {
+            console.error('[REALTIME] ❌❌❌ OpenAI ERROR received:');
+            console.error(JSON.stringify(message, null, 2));
             logger.error('[REALTIME] OpenAI error:', JSON.stringify(message, null, 2));
+            
+            // Forward error to client
+            if (ws.readyState === WebSocket.OPEN) {
+              ws.send(JSON.stringify({
+                type: 'error',
+                error: message.error?.message || message.error || 'Unknown OpenAI error',
+                details: message.error,
+              }));
+            }
           }
         } catch (parseError) {
           // Not JSON, will be handled below
@@ -348,11 +366,21 @@ export function setupRealtimeWebSocket(server: any) {
                 
                 // Save transcripts and log important events
                 if (message.type === 'input_audio_buffer.committed' && message.input_audio_buffer?.transcript) {
-                  console.log('[REALTIME] 👤 User said:', message.input_audio_buffer.transcript);
-                  saveTranscript(sessionId, 'user', message.input_audio_buffer.transcript);
+                  const userTranscript = message.input_audio_buffer.transcript;
+                  console.log('[REALTIME] 👤 User said:', userTranscript);
+                  if (userTranscript && userTranscript.trim().length > 0) {
+                    saveTranscript(sessionId, 'user', userTranscript).catch((err) => {
+                      logger.error('[REALTIME] Failed to save user transcript:', err);
+                    });
+                  }
                 } else if (message.type === 'response.audio_transcript.done' && message.response?.audio_transcript) {
-                  console.log('[REALTIME] 🤖 AI said:', message.response.audio_transcript);
-                  saveTranscript(sessionId, 'assistant', message.response.audio_transcript);
+                  const aiTranscript = message.response.audio_transcript;
+                  console.log('[REALTIME] 🤖 AI said:', aiTranscript);
+                  if (aiTranscript && aiTranscript.trim().length > 0) {
+                    saveTranscript(sessionId, 'assistant', aiTranscript).catch((err) => {
+                      logger.error('[REALTIME] Failed to save AI transcript:', err);
+                    });
+                  }
                 } else if (message.type === 'response.created') {
                   console.log('[REALTIME] 🤖 AI started responding (after 500ms silence)');
                 } else if (message.type === 'response.done') {
@@ -434,19 +462,32 @@ export function setupRealtimeWebSocket(server: any) {
         }
       });
 
-      // Handle OpenAI connection close
-      openaiWs.on('close', (code, reason) => {
-        console.error(`[REALTIME] ❌ CLOSE EVENT FIRED: code=${code}, reason="${reason?.toString()}"`);
-        console.error(`[REALTIME] sessionCreated=${sessionCreated}, sessionReady=${sessionReady}`);
-        logger.error(`[REALTIME] ❌ OpenAI WebSocket closed: code=${code}, reason="${reason?.toString()}"`);
-        logger.error('[REALTIME] Connection closed details:', {
-          code,
-          reason: reason?.toString(),
-          readyState: openaiWs.readyState,
-          sessionCreated,
-          sessionReady,
-          timestamp: new Date().toISOString(),
-        });
+       // Handle OpenAI connection close
+       openaiWs.on('close', (code, reason) => {
+         console.error(`[REALTIME] ❌ CLOSE EVENT FIRED: code=${code}, reason="${reason?.toString()}"`);
+         console.error(`[REALTIME] sessionCreated=${sessionCreated}, sessionReady=${sessionReady}`);
+         console.error(`[REALTIME] Audio chunks sent: ${connection.audioChunksSent || 0}`);
+         logger.error(`[REALTIME] ❌ OpenAI WebSocket closed: code=${code}, reason="${reason?.toString()}"`);
+         logger.error('[REALTIME] Connection closed details:', {
+           code,
+           reason: reason?.toString(),
+           readyState: openaiWs.readyState,
+           sessionCreated,
+           sessionReady,
+           audioChunksSent: connection.audioChunksSent || 0,
+           timestamp: new Date().toISOString(),
+         });
+         
+         // Code 1005 = No Status Received (abnormal closure)
+         // This usually means OpenAI rejected something or there was a network issue
+         if (code === 1005) {
+           console.error('[REALTIME] ⚠️ Code 1005 = Abnormal closure (no close frame)');
+           console.error('[REALTIME] This usually means:');
+           console.error('  1. OpenAI rejected the session configuration');
+           console.error('  2. Invalid audio format sent');
+           console.error('  3. Network interruption');
+           console.error('  4. API key issue or rate limit');
+         }
         
         // Log close code meanings
         const closeCodeMeanings: Record<number, string> = {
@@ -530,10 +571,17 @@ export function setupRealtimeWebSocket(server: any) {
               
               // CRITICAL: Check if this is actually JSON masquerading as binary
               // If first byte is '{' (123), reject it
-              if (data[0] === 123) {
-                logger.error('[REALTIME] ❌ CRITICAL: Received JSON as binary audio! First byte is {');
-                console.error('[REALTIME] First 20 bytes as string:', data.slice(0, 20).toString('utf8'));
-                return; // Reject JSON sent as audio
+              // BUT: PCM16 can have value 123, so check if it's actually JSON by looking at more bytes
+              if (data[0] === 123 && data.length > 10) {
+                // Check if it looks like JSON (starts with '{' and has valid JSON structure)
+                const firstBytes = data.slice(0, Math.min(100, data.length)).toString('utf8');
+                if (firstBytes.trim().startsWith('{') && firstBytes.includes('"')) {
+                  logger.error('[REALTIME] ❌ CRITICAL: Received JSON as binary audio!');
+                  console.error('[REALTIME] First 100 bytes as string:', firstBytes);
+                  console.error('[REALTIME] This should NOT happen - frontend should only send binary PCM16');
+                  // Don't return - log but continue to see what happens
+                  // return; // Reject JSON sent as audio
+                }
               }
               
               // Verify it's PCM16 data (must be even number of bytes, 2 bytes per sample)
@@ -568,20 +616,48 @@ export function setupRealtimeWebSocket(server: any) {
                 // CRITICAL: Convert Buffer to base64 and wrap in JSON event
                 // OpenAI Realtime API requires this format: { type: 'input_audio_buffer.append', audio: '<base64>' }
                 const base64Audio = audioBuffer.toString('base64');
+                
+                // Validate base64 is not empty
+                if (!base64Audio || base64Audio.length === 0) {
+                  logger.warn('[REALTIME] Empty base64 audio, skipping');
+                  return;
+                }
+                
                 const audioEvent = {
                   type: 'input_audio_buffer.append',
                   audio: base64Audio,
                 };
                 
                 // Send as JSON string
-                openaiWs.send(JSON.stringify(audioEvent));
+                const eventString = JSON.stringify(audioEvent);
+                openaiWs.send(eventString);
                 
                 // Only log occasionally to reduce noise
-                if (connection.audioChunksSent % 50 === 0) {
+                if (connection.audioChunksSent % 100 === 0) {
                   console.log(`[REALTIME] ✅ Sent ${connection.audioChunksSent} audio chunks to OpenAI`);
+                  
+                  // Log audio level for debugging
+                  const samples = new Int16Array(audioBuffer);
+                  let maxSample = 0;
+                  let nonZeroCount = 0;
+                  for (let i = 0; i < Math.min(1000, samples.length); i++) {
+                    const abs = Math.abs(samples[i]);
+                    maxSample = Math.max(maxSample, abs);
+                    if (abs > 100) { // Count samples above noise floor
+                      nonZeroCount++;
+                    }
+                  }
+                  const audioLevel = (maxSample / 32768) * 100;
+                  const nonZeroPercent = (nonZeroCount / Math.min(1000, samples.length)) * 100;
+                  console.log(`[REALTIME] 🔊 Audio: ${audioLevel.toFixed(1)}% max, ${nonZeroPercent.toFixed(1)}% above noise`);
+                  
+                  if (audioLevel < 1) {
+                    console.warn(`[REALTIME] ⚠️ Audio very quiet (${audioLevel.toFixed(1)}%) - OpenAI may not detect`);
+                  }
                 }
               } catch (error) {
                 logger.error('[REALTIME] ❌ Error sending audio to OpenAI:', error);
+                console.error('[REALTIME] Error details:', error);
               }
             } else {
               logger.warn('[REALTIME] Unknown message type from client:', typeof data);

@@ -3,6 +3,11 @@ import { registerUser, loginUser, getUserById } from '../services/authService';
 import { registerSchema, loginSchema } from '../validators/authValidators';
 import { AppError } from '../../../middleware/errorHandler';
 import { ERROR_MESSAGES } from '@ai-english-speaker/shared';
+import {
+  verifyEmailToken,
+  resendVerificationEmail,
+} from '../services/emailVerificationService';
+import { findUserByEmail } from '../repositories/userRepository';
 
 /**
  * Register a new user
@@ -80,6 +85,66 @@ export async function logout(req: Request, res: Response, next: NextFunction) {
     res.json({
       success: true,
       message: 'Logout successful',
+    });
+  } catch (error) {
+    next(error);
+  }
+}
+
+/**
+ * Verify email with token
+ * POST /api/v1/auth/verify-email
+ */
+export async function verifyEmail(req: Request, res: Response, next: NextFunction) {
+  try {
+    const { token } = req.body;
+
+    if (!token) {
+      throw new AppError('Token is required', 400);
+    }
+
+    // Verify token (finds user by token)
+    const result = await verifyEmailToken(token);
+    if (!result.success) {
+      throw new AppError('Invalid or expired verification token', 400);
+    }
+
+    res.json({
+      success: true,
+      message: 'Email verified successfully',
+      data: {
+        user: result.user,
+      },
+    });
+  } catch (error) {
+    next(error);
+  }
+}
+
+/**
+ * Resend verification email
+ * POST /api/v1/auth/resend-verification
+ */
+export async function resendVerification(req: Request, res: Response, next: NextFunction) {
+  try {
+    const { email } = req.body;
+
+    if (!email) {
+      throw new AppError('Email is required', 400);
+    }
+
+    // Find user by email
+    const user = await findUserByEmail(email);
+    if (!user) {
+      throw new AppError('User not found', 404);
+    }
+
+    // Resend verification email
+    await resendVerificationEmail(user.id);
+
+    res.json({
+      success: true,
+      message: 'Verification email sent successfully',
     });
   } catch (error) {
     next(error);

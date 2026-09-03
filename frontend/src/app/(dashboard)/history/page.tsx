@@ -7,22 +7,72 @@ import { Badge } from '@/components/ui/badge';
 import { useQuery } from '@tanstack/react-query';
 import { sessionsApi } from '@/lib/api';
 import { useRouter } from 'next/navigation';
-import { formatDateTime, SessionStatus } from '@ai-english-speaker/shared';
+import { formatDateTime, SessionStatus, Session } from '@ai-english-speaker/shared';
 import { MessageSquare, Clock, History, TrendingUp, Calendar, Loader2, Mic } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { useMemo } from 'react';
 
 export default function HistoryPage() {
   const router = useRouter();
 
   const { data: sessions, isLoading } = useQuery({
     queryKey: ['sessions', 'history'],
-    queryFn: () => sessionsApi.getHistory(50, 0),
+    queryFn: () => sessionsApi.getHistory(), // Fetch all sessions
   });
+
+  // Group sessions by week
+  const sessionsByWeek = useMemo(() => {
+    if (!sessions || sessions.length === 0) return [];
+
+    const grouped: { week: string; startDate: Date; endDate: Date; sessions: Session[] }[] = [];
+    const weekMap = new Map<string, Session[]>();
+
+    sessions.forEach((session) => {
+      const date = new Date(session.startedAt);
+      const weekStart = new Date(date);
+      weekStart.setDate(date.getDate() - date.getDay()); // Start of week (Sunday)
+      weekStart.setHours(0, 0, 0, 0);
+
+      const weekEnd = new Date(weekStart);
+      weekEnd.setDate(weekStart.getDate() + 6);
+      weekEnd.setHours(23, 59, 59, 999);
+
+      const weekKey = `${weekStart.toISOString().split('T')[0]}_${weekEnd.toISOString().split('T')[0]}`;
+
+      if (!weekMap.has(weekKey)) {
+        weekMap.set(weekKey, []);
+        grouped.push({
+          week: weekKey,
+          startDate: weekStart,
+          endDate: weekEnd,
+          sessions: [],
+        });
+      }
+      weekMap.get(weekKey)!.push(session);
+    });
+
+    // Populate sessions in grouped array
+    grouped.forEach((group) => {
+      group.sessions = weekMap.get(group.week) || [];
+    });
+
+    // Sort by week start date (newest first)
+    grouped.sort((a, b) => b.startDate.getTime() - a.startDate.getTime());
+
+    return grouped;
+  }, [sessions]);
 
   // Calculate stats
   const totalSessions = sessions?.length || 0;
   const totalMinutes = sessions?.reduce((acc, s) => acc + s.duration, 0) || 0;
   const completedSessions = sessions?.filter(s => s.status === SessionStatus.ENDED).length || 0;
+
+  // Format week range
+  const formatWeekRange = (startDate: Date, endDate: Date) => {
+    const start = startDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+    const end = endDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+    return `${start} - ${end}`;
+  };
 
   return (
     <DashboardLayout>
@@ -113,57 +163,86 @@ export default function HistoryPage() {
               <p className="text-muted-foreground">Loading sessions...</p>
             </div>
           ) : sessions && sessions.length > 0 ? (
-            <div className="grid gap-4">
-              {sessions.map((session, index) => (
-                <Card 
-                  key={session.id}
-                  className={cn(
-                    "hover:shadow-lg transition-all hover:border-primary/50 border-2 group cursor-pointer",
-                    index === 0 && "border-primary/30 bg-primary/5"
-                  )}
-                  onClick={() => router.push(`/history/${session.id}`)}
-                >
-                  <CardHeader>
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-4">
-                        <div className={cn(
-                          "h-14 w-14 rounded-lg flex flex-col items-center justify-center",
-                          index % 3 === 0 && "bg-gradient-to-br from-blue-500 to-cyan-500",
-                          index % 3 === 1 && "bg-gradient-to-br from-purple-500 to-pink-500",
-                          index % 3 === 2 && "bg-gradient-to-br from-green-500 to-emerald-500"
-                        )}>
-                          <MessageSquare className="h-6 w-6 text-white" />
-                        </div>
-                        <div>
-                          <CardTitle className="flex items-center gap-2">
-                            Practice Session
-                            {index === 0 && (
-                              <Badge className="bg-gradient-to-r from-purple-500 to-pink-500">
-                                Latest
-                              </Badge>
-                            )}
-                          </CardTitle>
-                          <CardDescription className="flex items-center gap-4 mt-1">
-                            <span className="flex items-center gap-1">
-                              <Calendar className="h-3 w-3" />
-                              {formatDateTime(session.startedAt)}
-                            </span>
-                            <span className="flex items-center gap-1">
-                              <Clock className="h-3 w-3" />
-                              {session.duration} min
-                            </span>
-                          </CardDescription>
-                        </div>
-                      </div>
-                      <Button
-                        variant="outline"
-                        className="opacity-0 group-hover:opacity-100 transition-all border-2 hover:border-primary hover:bg-primary hover:text-primary-foreground"
-                      >
-                        View Details
-                      </Button>
+            <div className="space-y-8">
+              {sessionsByWeek.map((weekGroup, weekIndex) => (
+                <div key={weekGroup.week} className="space-y-4">
+                  {/* Week Header */}
+                  <div className="flex items-center gap-3 pb-2 border-b-2 border-primary/20">
+                    <div className="h-8 w-8 rounded-lg bg-gradient-to-br from-blue-500 to-cyan-500 flex items-center justify-center">
+                      <Calendar className="h-4 w-4 text-white" />
                     </div>
-                  </CardHeader>
-                </Card>
+                    <div>
+                      <h3 className="text-lg font-bold">
+                        {formatWeekRange(weekGroup.startDate, weekGroup.endDate)}
+                      </h3>
+                      <p className="text-xs text-muted-foreground">
+                        {weekGroup.sessions.length} {weekGroup.sessions.length === 1 ? 'session' : 'sessions'}
+                      </p>
+                    </div>
+                  </div>
+
+                  {/* Sessions for this week */}
+                  <div className="grid gap-4">
+                    {weekGroup.sessions.map((session, sessionIndex) => {
+                      const globalIndex = weekGroup.sessions.slice(0, sessionIndex).reduce((acc, _, idx) => {
+                        const prevWeeks = sessionsByWeek.slice(0, weekIndex);
+                        return acc + (prevWeeks.length > 0 ? prevWeeks.reduce((sum, w) => sum + w.sessions.length, 0) : 0);
+                      }, sessionIndex);
+                      
+                      return (
+                        <Card 
+                          key={session.id}
+                          className={cn(
+                            "hover:shadow-lg transition-all hover:border-primary/50 border-2 group cursor-pointer",
+                            sessionIndex === 0 && weekIndex === 0 && "border-primary/30 bg-primary/5"
+                          )}
+                          onClick={() => router.push(`/history/${session.id}`)}
+                        >
+                          <CardHeader>
+                            <div className="flex items-center justify-between">
+                              <div className="flex items-center gap-4">
+                                <div className={cn(
+                                  "h-14 w-14 rounded-lg flex flex-col items-center justify-center",
+                                  globalIndex % 3 === 0 && "bg-gradient-to-br from-blue-500 to-cyan-500",
+                                  globalIndex % 3 === 1 && "bg-gradient-to-br from-purple-500 to-pink-500",
+                                  globalIndex % 3 === 2 && "bg-gradient-to-br from-green-500 to-emerald-500"
+                                )}>
+                                  <MessageSquare className="h-6 w-6 text-white" />
+                                </div>
+                                <div>
+                                  <CardTitle className="flex items-center gap-2">
+                                    Practice Session
+                                    {sessionIndex === 0 && weekIndex === 0 && (
+                                      <Badge className="bg-gradient-to-r from-purple-500 to-pink-500">
+                                        Latest
+                                      </Badge>
+                                    )}
+                                  </CardTitle>
+                                  <CardDescription className="flex items-center gap-4 mt-1">
+                                    <span className="flex items-center gap-1">
+                                      <Calendar className="h-3 w-3" />
+                                      {formatDateTime(session.startedAt)}
+                                    </span>
+                                    <span className="flex items-center gap-1">
+                                      <Clock className="h-3 w-3" />
+                                      {session.duration} min
+                                    </span>
+                                  </CardDescription>
+                                </div>
+                              </div>
+                              <Button
+                                variant="outline"
+                                className="opacity-0 group-hover:opacity-100 transition-all border-2 hover:border-primary hover:bg-primary hover:text-primary-foreground"
+                              >
+                                View Details
+                              </Button>
+                            </div>
+                          </CardHeader>
+                        </Card>
+                      );
+                    })}
+                  </div>
+                </div>
               ))}
             </div>
           ) : (

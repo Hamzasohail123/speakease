@@ -8,6 +8,7 @@ export interface LLMMessage {
 
 export interface LLMResponse {
   content: string;
+  model: string;
   usage?: {
     promptTokens: number;
     completionTokens: number;
@@ -18,7 +19,7 @@ export interface LLMResponse {
 /**
  * Call OpenAI API
  */
-async function callOpenAI(messages: LLMMessage[]): Promise<LLMResponse> {
+async function callOpenAI(messages: LLMMessage[], model: string): Promise<LLMResponse> {
   if (!env.OPENAI_API_KEY) {
     throw new Error('OPENAI_API_KEY is not set');
   }
@@ -30,7 +31,7 @@ async function callOpenAI(messages: LLMMessage[]): Promise<LLMResponse> {
       Authorization: `Bearer ${env.OPENAI_API_KEY}`,
     },
     body: JSON.stringify({
-      model: 'gpt-3.5-turbo', // Use cheaper model for MVP
+      model,
       messages: messages,
       temperature: 0.7,
       max_tokens: 500,
@@ -48,6 +49,7 @@ async function callOpenAI(messages: LLMMessage[]): Promise<LLMResponse> {
 
   return {
     content,
+    model,
     usage: data.usage
       ? {
           promptTokens: data.usage.prompt_tokens as number,
@@ -57,6 +59,11 @@ async function callOpenAI(messages: LLMMessage[]): Promise<LLMResponse> {
       : undefined,
   };
 }
+
+// Cheapest Anthropic model — used only as an outage fallback when OpenAI fails,
+// not part of the plan-based model tiering (that's OpenAI-only for now; see
+// MODEL_FOR_PLAN in billing/services/planService.ts).
+const ANTHROPIC_FALLBACK_MODEL = 'claude-3-haiku-20240307';
 
 /**
  * Call Anthropic API
@@ -78,7 +85,7 @@ async function callAnthropic(messages: LLMMessage[]): Promise<LLMResponse> {
       'anthropic-version': '2023-06-01',
     },
     body: JSON.stringify({
-      model: 'claude-3-haiku-20240307', // Cheaper model
+      model: ANTHROPIC_FALLBACK_MODEL,
       max_tokens: 500,
       system: systemMessage?.content || '',
       messages: conversationMessages.map((m) => ({
@@ -99,6 +106,7 @@ async function callAnthropic(messages: LLMMessage[]): Promise<LLMResponse> {
 
   return {
     content,
+    model: ANTHROPIC_FALLBACK_MODEL,
     usage: data.usage
       ? {
           promptTokens: data.usage.input_tokens as number,
@@ -110,13 +118,15 @@ async function callAnthropic(messages: LLMMessage[]): Promise<LLMResponse> {
 }
 
 /**
- * Call LLM (OpenAI or Anthropic)
+ * Call LLM (OpenAI, with Anthropic as an outage fallback).
+ * `model` is the plan-resolved OpenAI model (see planService.getModelForPlan) —
+ * it's ignored on the Anthropic fallback path, which always uses the cheapest
+ * Anthropic model since it only fires when OpenAI itself is down.
  */
-export async function callLLM(messages: LLMMessage[]): Promise<LLMResponse> {
-  // Prefer OpenAI if both are available
+export async function callLLM(messages: LLMMessage[], model: string): Promise<LLMResponse> {
   if (env.OPENAI_API_KEY) {
     try {
-      return await callOpenAI(messages);
+      return await callOpenAI(messages, model);
     } catch (error: unknown) {
       logger.warn('OpenAI call failed, trying Anthropic:', error);
       if (env.ANTHROPIC_API_KEY) {

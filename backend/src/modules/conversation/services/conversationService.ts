@@ -7,6 +7,8 @@ import { getTopicById } from '../../topics/repositories/topicRepository';
 import { AppError } from '../../../middleware/errorHandler';
 import { ERROR_MESSAGES } from '@ai-english-speaker/shared';
 import { logger } from '../../../utils/logger';
+import { getPlanForUser, getModelForPlan, estimateCostCents } from '../../billing/services/planService';
+import { recordUsage } from '../../billing/repositories/subscriptionRepository';
 
 /**
  * Send a message in a conversation
@@ -64,11 +66,25 @@ export async function sendMessage(
   // Build LLM messages
   const llmMessages = buildConversationMessages(systemPrompt, updatedHistory);
 
+  // Resolve which model this user's plan is entitled to (see billing/services/planService)
+  const plan = await getPlanForUser(userId);
+  const model = getModelForPlan(plan);
+
   // Call LLM
   let assistantResponse: string;
   try {
-    const llmResponse = await callLLM(llmMessages);
+    const llmResponse = await callLLM(llmMessages, model);
     assistantResponse = llmResponse.content;
+
+    if (llmResponse.usage) {
+      await recordUsage({
+        userId,
+        sessionId,
+        model: llmResponse.model,
+        tokens: llmResponse.usage.totalTokens,
+        costCents: estimateCostCents(llmResponse.model, llmResponse.usage.totalTokens),
+      });
+    }
   } catch (error) {
     logger.error('LLM call failed:', error);
     // Fallback response if LLM fails

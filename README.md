@@ -137,5 +137,5 @@ See [RENDER_DEPLOY.md](./RENDER_DEPLOY.md) for step-by-step instructions!
 
 ## License
 
-Private project
+private
 

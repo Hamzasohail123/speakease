@@ -1,5 +1,7 @@
 import { Router } from 'express';
 import { authenticate } from '../auth/middleware/authMiddleware';
+import { llmLimiter } from '../../middleware/rateLimiter';
+import { enforceQuota } from '../billing/middleware/quotaMiddleware';
 import {
   sendConversationMessage,
   getConversationMessages,
@@ -20,14 +22,14 @@ router.use('/realtime', realtimeRoutes);
  * @desc    Send a message in a conversation
  * @access  Private
  */
-router.post('/message', sendConversationMessage);
+router.post('/message', llmLimiter, enforceQuota('text'), sendConversationMessage);
 
 /**
  * @route   POST /api/v1/conversation/voice
  * @desc    Send a voice message (audio) and get audio response
  * @access  Private
  */
-router.post('/voice', voiceUpload, processVoice);
+router.post('/voice', llmLimiter, enforceQuota('voice'), voiceUpload, processVoice);
 
 /**
  * @route   GET /api/v1/conversation/:sessionId/messages

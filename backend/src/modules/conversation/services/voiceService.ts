@@ -3,6 +3,17 @@ import { textToSpeech } from './ttsService';
 import { sendMessage } from './conversationService';
 import { Message, MessageRole } from '@ai-english-speaker/shared';
 import { logger } from '../../../utils/logger';
+import { incrementVoiceUsage } from '../../billing/repositories/subscriptionRepository';
+
+// Rough duration estimate from compressed audio size — there's no real decoder in
+// the pipeline to measure exact length. ~16KB/s is a reasonable average for
+// webm/opus voice recordings at typical browser MediaRecorder settings. Good
+// enough to gate a daily quota; not accurate enough for anything billing-grade.
+const ASSUMED_BYTES_PER_SECOND = 16_000;
+
+function estimateAudioSeconds(audioBuffer: Buffer): number {
+  return audioBuffer.length / ASSUMED_BYTES_PER_SECOND;
+}
 
 /**
  * Voice Conversation Service
@@ -82,6 +93,11 @@ export async function processVoiceMessage(
     });
 
     logger.info(`Voice message processing complete. Audio response size: ${audioResponse.length} bytes`);
+
+    // Fire-and-forget: don't let quota bookkeeping delay the response.
+    incrementVoiceUsage(userId, estimateAudioSeconds(audioBuffer)).catch((error) =>
+      logger.error('Failed to increment voice usage quota', error)
+    );
 
     return {
       userMessage,

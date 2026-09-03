@@ -1,0 +1,16 @@
+import { MetadataRoute } from 'next';
+
+const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || 'https://speakease.app';
+
+export default function robots(): MetadataRoute.Robots {
+  return {
+    rules: {
+      userAgent: '*',
+      allow: '/',
+      // Authenticated app screens have nothing for a crawler to index and no
+      // public content — keep them out of the crawl budget.
+      disallow: ['/dashboard', '/speak', '/topics', '/history', '/feedback', '/profile'],
+    },
+    sitemap: `${siteUrl}/sitemap.xml`,
+  };
+}
