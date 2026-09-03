@@ -32,7 +32,7 @@ export const feedbackApi = {
 
   submitUserFeedback: async (data: UserFeedbackRequest): Promise<void> => {
     // This endpoint doesn't require authentication, so we use fetch directly
-    const API_URL = process.env.NEXT_PUBLIC_API_URL || 'https://speakease-backend.onrender.com';
+    const API_URL = process.env.NEXT_PUBLIC_API_URL || 'https://speakease-backend-vxpz.onrender.com';
     const response = await fetch(`${API_URL}/api/v1/feedback/submit`, {
       method: 'POST',
       headers: {

@@ -34,10 +34,29 @@ process.on('unhandledRejection', (reason) => {
 const app = express();
 const PORT = parseInt(process.env.PORT || '3001', 10);
 const HOST = process.env.HOST || '0.0.0.0'; // Listen on all interfaces for Render
-const FRONTEND_URL = process.env.FRONTEND_URL || 'http://localhost:3000';
+const FRONTEND_URL =
+  process.env.FRONTEND_URL || 'https://speakease-frontend.vercel.app';
+const allowedOrigins = [
+  FRONTEND_URL,
+  'https://speakease-frontend.vercel.app',
+  'http://localhost:3000',
+  'http://127.0.0.1:3000',
+];
 
 // Middleware
-app.use(cors({ origin: FRONTEND_URL, credentials: true }));
+app.use(
+  cors({
+    origin: (origin, callback) => {
+      if (!origin || allowedOrigins.includes(origin)) {
+        callback(null, true);
+        return;
+      }
+
+      callback(new Error(`CORS blocked for origin: ${origin}`));
+    },
+    credentials: true,
+  })
+);
 
 // Paddle webhook needs the raw request body for signature verification, so it's
 // registered before express.json() below — once that runs, the raw bytes are gone.

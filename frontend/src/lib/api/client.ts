@@ -1,6 +1,6 @@
 import { ApiResponse } from '@ai-english-speaker/shared';
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL || 'https://speakease-backend.onrender.com';
+const API_URL = process.env.NEXT_PUBLIC_API_URL || 'https://speakease-backend-vxpz.onrender.com';
 
 class ApiClient {
   private baseURL: string;

@@ -137,7 +137,7 @@ export function CallWithAI({ sessionId }: CallWithAIProps) {
       }
 
       // Get API URL
-      const API_URL = process.env.NEXT_PUBLIC_API_URL || 'https://speakease-backend.onrender.com';
+      const API_URL = process.env.NEXT_PUBLIC_API_URL || 'https://speakease-backend-vxpz.onrender.com';
 
       // Connect to WebSocket
       const wsUrl = `${API_URL.replace('http', 'ws')}/api/v1/conversation/realtime/ws?sessionId=${sessionId}&token=${token}`;
