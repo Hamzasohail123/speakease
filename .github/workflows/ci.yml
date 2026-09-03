@@ -2,9 +2,9 @@ name: CI
 
 on:
   push:
-    branches: [main, develop]
+    branches: [main, develop, development]
   pull_request:
-    branches: [main, develop]
+    branches: [main, develop, development]
 
 jobs:
   lint-and-build:
@@ -22,6 +22,9 @@ jobs:
       
       - name: Install dependencies
         run: npm install --include=dev
+
+      - name: Generate Prisma client
+        run: npm run db:generate --workspace=backend
       
       - name: Build shared package first (required by other packages)
         run: npm run build --workspace=shared
@@ -46,4 +49,3 @@ jobs:
       
       - name: Build frontend
         run: npm run build --workspace=frontend
-
