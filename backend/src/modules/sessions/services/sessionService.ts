@@ -30,7 +30,7 @@ export async function startUserSession(
   // Validate topicId if provided (check if topic exists)
   let validatedTopicId: string | undefined = input.topicId;
   if (input.topicId) {
-    const { getTopicById } = await import('../../topics/repositories/topicRepository');
+    const { getTopicById } = await import('../../topics/repositories/topicRepository.js');
     const topic = await getTopicById(input.topicId);
     if (!topic) {
       logger.warn(`Topic not found: ${input.topicId}, proceeding without topic`);
@@ -167,4 +167,3 @@ export async function addMessageToSession(
 export async function getActiveUserSession(userId: string): Promise<Session | null> {
   return await getActiveSession(userId);
 }
-

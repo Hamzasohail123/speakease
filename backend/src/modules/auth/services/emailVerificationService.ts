@@ -201,7 +201,7 @@ If you didn't create an account with SpeakEase, please ignore this email.
  * Verify email token and update user
  */
 export async function verifyEmailToken(token: string): Promise<{ success: boolean; user?: User }> {
-  const { findUserByVerificationToken } = await import('../repositories/userRepository');
+  const { findUserByVerificationToken } = await import('../repositories/userRepository.js');
   const user = await findUserByVerificationToken(token);
 
   if (!user) {
@@ -237,7 +237,7 @@ export async function verifyEmailToken(token: string): Promise<{ success: boolea
  * Resend verification email
  */
 export async function resendVerificationEmail(userId: string): Promise<void> {
-  const { findUserById } = await import('../repositories/userRepository');
+  const { findUserById } = await import('../repositories/userRepository.js');
   const user = await findUserById(userId);
 
   if (!user) {
@@ -261,4 +261,3 @@ export async function resendVerificationEmail(userId: string): Promise<void> {
   // Send verification email
   await sendVerificationEmail(user.email, user.name, token);
 }
-
