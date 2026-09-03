@@ -3,13 +3,18 @@ import { processVoiceMessage } from '../services/voiceService';
 import { AppError } from '../../../middleware/errorHandler';
 import multer from 'multer';
 
+interface UploadedAudio {
+  buffer: Buffer;
+  mimetype: string;
+}
+
 // Configure multer for audio uploads
 const upload = multer({
   storage: multer.memoryStorage(),
   limits: {
     fileSize: 10 * 1024 * 1024, // 10MB max
   },
-  fileFilter: (_req: Request, file: Express.Multer.File, cb: multer.FileFilterCallback) => {
+  fileFilter: (_req: Request, file: UploadedAudio, cb: multer.FileFilterCallback) => {
     // Accept audio files
     if (file.mimetype.startsWith('audio/')) {
       cb(null, true);
@@ -44,7 +49,7 @@ export async function processVoice(
       });
     }
 
-    const file = (req as Request & { file?: Express.Multer.File }).file;
+    const file = (req as Request & { file?: UploadedAudio }).file;
     if (!file) {
       return res.status(400).json({
         success: false,
@@ -77,4 +82,3 @@ export async function processVoice(
 
 // Export multer middleware
 export const voiceUpload = upload.single('audio');
-
