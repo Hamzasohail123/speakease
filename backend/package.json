@@ -12,7 +12,7 @@
     "lint": "eslint . --ext .ts",
     "db:generate": "prisma generate",
     "db:migrate": "prisma migrate dev",
-    "db:migrate:deploy": "prisma migrate deploy",
+    "db:migrate:deploy": "DIRECT_URL=\"${DIRECT_URL:-$DATABASE_URL}\" prisma migrate deploy",
     "db:studio": "prisma studio",
     "db:seed": "tsx prisma/seed.ts",
     "db:verify": "tsx scripts/verify-db.ts",
