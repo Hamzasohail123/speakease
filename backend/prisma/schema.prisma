@@ -3,23 +3,27 @@ generator client {
 }
 
 datasource db {
-  provider = "postgresql"
-  url      = env("DATABASE_URL")
+  provider  = "postgresql"
+  url       = env("DATABASE_URL") // app connections — point at Neon's pooler endpoint in production
+  directUrl = env("DIRECT_URL")   // migrations — needs the non-pooled endpoint
 }
 
 model User {
-  id                           String       @id @default(cuid())
-  email                        String       @unique
+  id                           String        @id @default(cuid())
+  email                        String        @unique
   name                         String
   passwordHash                 String
-  createdAt                    DateTime     @default(now())
-  updatedAt                    DateTime     @updatedAt
-  emailVerified                Boolean      @default(false)
+  createdAt                    DateTime      @default(now())
+  updatedAt                    DateTime      @updatedAt
+  emailVerified                Boolean       @default(false)
   emailVerificationToken       String?
   emailVerificationTokenExpiry DateTime?
   memories                     Memory[]
   sessions                     Session[]
   profile                      UserProfile?
+  subscription                 Subscription?
+  usageQuota                   UsageQuota?
+  usageRecords                 UsageRecord[]
 
   @@map("users")
 }
@@ -128,4 +132,57 @@ enum SessionStatus {
 enum MessageRole {
   USER
   ASSISTANT
+}
+
+enum PlanType {
+  FREE
+  PLUS
+  PRO
+  BUSINESS
+}
+
+model Subscription {
+  id                   String    @id @default(cuid())
+  userId               String    @unique
+  plan                 PlanType  @default(FREE)
+  status                String   @default("ACTIVE") // ACTIVE, CANCELLED, PAST_DUE
+  paddleCustomerId     String?
+  paddleSubscriptionId String?
+  currentPeriodEnd     DateTime?
+  cancelAtPeriodEnd    Boolean   @default(false)
+  createdAt            DateTime  @default(now())
+  updatedAt            DateTime  @updatedAt
+  user                 User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([paddleCustomerId])
+  @@map("subscriptions")
+}
+
+model UsageQuota {
+  id               String   @id @default(cuid())
+  userId           String   @unique
+  textMessagesUsed Int      @default(0)
+  voiceSecondsUsed Int      @default(0)
+  periodResetAt    DateTime
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+  user             User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("usage_quotas")
+}
+
+// Append-only — one row per LLM call, for cost auditing and per-plan usage analytics.
+model UsageRecord {
+  id        String   @id @default(cuid())
+  userId    String
+  sessionId String?
+  model     String // e.g. "gpt-4o-mini", "gpt-4o"
+  tokens    Int
+  costCents Float // fractional cents — per-message LLM cost is well under $0.01
+  createdAt DateTime @default(now())
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([createdAt])
+  @@map("usage_records")
 }

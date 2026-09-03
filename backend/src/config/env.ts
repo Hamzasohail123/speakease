@@ -26,10 +26,17 @@ export const env = {
   GOOGLE_CLIENT_ID: process.env.GOOGLE_CLIENT_ID || '',
   GOOGLE_CLIENT_SECRET: process.env.GOOGLE_CLIENT_SECRET || '',
 
-  // Redis (Future)
+  // Redis — Upstash connection string (rediss://...). Caching + rate limiting degrade
+  // gracefully to "disabled" when unset; see config/redis.ts.
   REDIS_URL: process.env.REDIS_URL || '',
-  REDIS_HOST: process.env.REDIS_HOST || 'localhost',
-  REDIS_PORT: parseInt(process.env.REDIS_PORT || '6379', 10),
+
+  // Paddle (billing) — Merchant of Record, used instead of Stripe (Stripe does not
+  // support businesses incorporated in Pakistan).
+  PADDLE_API_KEY: process.env.PADDLE_API_KEY || '',
+  PADDLE_WEBHOOK_SECRET: process.env.PADDLE_WEBHOOK_SECRET || '',
+  PADDLE_VENDOR_ID: process.env.PADDLE_VENDOR_ID || '',
+  PADDLE_PRICE_ID_PLUS: process.env.PADDLE_PRICE_ID_PLUS || '',
+  PADDLE_PRICE_ID_PRO: process.env.PADDLE_PRICE_ID_PRO || '',
 
   // Email (Feedback)
   SMTP_HOST: process.env.SMTP_HOST || '',

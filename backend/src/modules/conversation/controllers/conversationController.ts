@@ -3,6 +3,8 @@ import { sendMessage } from '../services/conversationService';
 import { getSessionMessages } from '../../sessions/repositories/sessionRepository';
 import { getUserSession } from '../../sessions/services/sessionService';
 import { sendMessageSchema } from '../validators/conversationValidators';
+import { incrementTextUsage } from '../../billing/repositories/subscriptionRepository';
+import { logger } from '../../../utils/logger';
 
 /**
  * Send a message in a conversation
@@ -34,6 +36,12 @@ export async function sendConversationMessage(
 
     // Send message
     const result = await sendMessage(req.user.id, sessionId, validatedData.content);
+
+    // Fire-and-forget: quota bookkeeping shouldn't delay or fail the response,
+    // which has already been earned by a successful LLM call.
+    incrementTextUsage(req.user.id).catch((error) =>
+      logger.error('Failed to increment text usage quota', error)
+    );
 
     res.json({
       success: true,

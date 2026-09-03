@@ -2,6 +2,11 @@ import { callLLM } from '../../conversation/services/llmService';
 import { Mistake } from '@ai-english-speaker/shared';
 import { logger } from '../../../utils/logger';
 
+// Feedback analysis runs once per session, not per message, so plan-tiered
+// model routing (see billing/services/planService) doesn't apply here — it's a
+// fixed, deliberately cheap model regardless of the user's plan.
+const ANALYSIS_MODEL = 'gpt-4o-mini';
+
 export interface AnalysisResult {
   mistakes: Mistake[];
   improvements: string[];
@@ -22,16 +27,19 @@ export async function analyzeTranscript(
   // Call LLM for analysis
   let analysisResponse: string;
   try {
-    const llmResponse = await callLLM([
-      {
-        role: 'system',
-        content: `You are an expert English teacher analyzing a student's conversation transcript. Your task is to identify mistakes, provide constructive feedback, and suggest improvements. Be friendly and encouraging.`,
-      },
-      {
-        role: 'user',
-        content: analysisPrompt,
-      },
-    ]);
+    const llmResponse = await callLLM(
+      [
+        {
+          role: 'system',
+          content: `You are an expert English teacher analyzing a student's conversation transcript. Your task is to identify mistakes, provide constructive feedback, and suggest improvements. Be friendly and encouraging.`,
+        },
+        {
+          role: 'user',
+          content: analysisPrompt,
+        },
+      ],
+      ANALYSIS_MODEL
+    );
 
     analysisResponse = llmResponse.content;
   } catch (error) {
